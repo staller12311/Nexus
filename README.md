@@ -278,6 +278,10 @@ python -m agent config check    # 打印将要使用的配置；密钥缺失时�
 > 必须用 `python -m pytest`（而不是裸 `pytest`）：测试通过包名 `agent.*` 导入，
 > 需要仓库根目录在 `sys.path` 上，`python -m` 会把当前目录加进去。
 
+当前全量：**277 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
+本轮新增 `tests/test_backend_service.py` 的 10 个 API 级冒烟用例（工作区切换 / 知识库 / 自定义模型，
+全部 hermetic：配置与 SQLite 都在 `tmp_path`），使总数从 267 增至 277。
+
 ## 如何新增一个工具
 
 下面是**真的加进去了**的一个最小工具 `get_time`：只依赖标准库、无副作用（不碰文件、网络、命令），
@@ -420,7 +424,20 @@ cd frontend && npm run dev                            # http://localhost:5173
 | POST | `/api/sessions/{id}/generate_title?force=false` | — | `{session_id, title, generated, model}`（短超时、非流式，失败 503） |
 | PATCH | `/api/sessions/{id}/system_prompt` | `{system_prompt}` | `{session_id, system_prompt, created, seq}` |
 | POST | `/api/chat/stream` | `{session_id, message, model?}` | `text/event-stream` |
-| GET | `/api/health` | — | `{status:"ok"}` |
+| GET | `/api/health` | — | `{status:"ok", python, integrity, write_warning}`（含运行时诊断） |
+| GET | `/api/config/workspace` | — | `{workspace, default_workspace, is_default, extras:[{name, path, writable}]}` |
+| POST | `/api/config/workspace` | `{path, extras?:[{name, path, writable}]}` | 同上结构；合法 200、非法 400（切换后下一句话立即生效） |
+| DELETE | `/api/config/workspace` | — | 同上结构（恢复默认工作区并清空附加挂载） |
+| GET | `/api/fs/dirs?path=` | — | `{path, parent, entries:[{name, path}], drives, truncated}`（空 `path` 返回盘符列表；只列目录） |
+| POST | `/api/fs/mkdir` | `{parent, name}` | `{name, path}`（在可列出的父目录下新建文件夹；非法 400） |
+
+**自定义模型端点语义**：`api_key` 明文只存 SQLite，绝不出现在响应与日志里；对外只有脱敏的
+`api_key_masked`（如 `sk-****3456`）。模型名重名 409、字段非法 400、删除不存在的模型 404。
+
+**多根挂载**：配置字段 `agent.extra_workspaces: [{name, path, writable}]`（`path` 与
+`agent.workspace` 一样以**配置文件所在目录**为相对路径基准；`writable` 默认 `false`，即只读），
+运行时也可用 `POST /api/config/workspace` 的 `extras` 覆盖。模型用 `@name/路径` 访问挂载，
+普通相对路径只相对主工作区解析；只读挂载不能写入（第 59 条）。
 
 ### SSE 事件协议
 
@@ -580,7 +597,7 @@ cd frontend && npm run test
 - [x] **三种用法示例**：`run "问题"` / `chat` / `sessions resume <id>`，均在 `## 运行`，附真实终端输出
 - [x] **如何新增一个模型**：`### 如何新增一个模型`（Moonshot 示例 + `.env` 步骤 + 真实 `config check` 输出）
 - [x] **如何新增一个工具**：`## 如何新增一个工具`（`get_time` 示例 + 5 步改动 + 真实 `tools list` / `run` 输出）
-- [x] **「设计决策」章节**：`## 设计决策`（44 条，含 Web 阶段的 34–44）
+- [x] **「设计决策」章节**：`## 设计决策`（62 条，含 Web 阶段的 34–62）
 
 Web 界面（第一阶段 CLI 之外的增量交付）：
 
@@ -592,13 +609,20 @@ Web 界面（第一阶段 CLI 之外的增量交付）：
 - [x] **系统提示词设置**：`PATCH /api/sessions/{id}/system_prompt`，改完下一句立即生效（第 42 条）
 - [x] **会话重命名 / 删除**：`PATCH` / `DELETE` + 悬浮按钮 + 二次确认 + 就地编辑（第 43 条）
 - [x] **动态模型配置**：`custom_models` 表 + 掩码脱敏 + 每个请求临时组装 Provider（第 44 条）
+- [x] **本地知识库 RAG**：`/api/kb/*` 上传 → 后台解析切片 → BM25 检索，`search_knowledge_base`
+  工具动态注入（第 51–52 条）
+- [x] **联网搜索**：`web_search` 工具（Bing 主 / 百度兜底）与「中断 / 重新生成」（第 53 条）
+- [x] **思维链与真流式**：`reasoning_delta` / `text_delta` 逐 token 推送，思维链单独持久化（第 48–49、54 条）
+- [x] **工作区切换 / 目录选择器**：`/api/config/workspace`（GET/POST/DELETE）+ `/api/fs/dirs`、
+  `/api/fs/mkdir`，点着选不用手打绝对路径（第 58、60 条）
+- [x] **多根工作区**：`@name` 命名挂载（`agent.extra_workspaces`），只读默认、越界红线不变（第 59 条）
+- [x] **文件 CRUD 工具**：`create_dir` / `delete_path` / `move_path`，权限报错改成可操作的人话（第 61–62 条）
+- [x] **运行时诊断**：`GET /api/health` 返回 `python` / `integrity` / `write_warning`（第 62 条②）
 
 ## 已知待办
 
 - `agent/cli.py::render_tools_table()` 的工具说明表与 `registry.py` 的 `ToolSpec.description` 是两份
   （README 第 32 条），新增工具要改两处。
-- 会话标题目前是「截取第一条 user 消息」，真正该做的是让模型自动起标题（需要新增一次模型调用，
-  并给 `sessions.title` 一个写入路径）；在那之前前端只能用兜底标题（第 41 条）。
 
 ## 已清偿的技术债
 
@@ -1660,7 +1684,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 写 @libs 的要求: 模型自己拒绝（只读挂载），且 @libs 文件内容未被改动（PORT 仍 8080）
 ```
 
-`pytest` 仍 264 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
+`pytest` 仍 277 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
 
 ### 60. 目录选择器：点着选，不用手打绝对路径
 
