@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { CheckCircle2, ChevronDown, ChevronRight, Loader2, Wrench, XCircle } from 'lucide-react'
+import { ApprovalCard } from './ApprovalCard'
 import type { ToolCallView } from '../types'
 
 /** 参数摘要：解析成对象后压成一行；解析失败就原样截断显示。 */
@@ -47,9 +48,20 @@ const STATUS = {
 
 export function ToolCard({ call }: { call: ToolCallView }) {
   const [expanded, setExpanded] = useState(false)
+  // 待审批：用黄色富文本卡片替代普通工具卡（含代码预览 + 同意/拒绝）
+  if (call.approval?.status === 'pending') return <ApprovalCard call={call} />
+
   const style = STATUS[call.status]
   const args = prettyArguments(call.arguments)
   const summary = summarize(call.arguments)
+  const approvalLabel =
+    call.approval?.status === 'approved'
+      ? '已同意'
+      : call.approval?.status === 'rejected'
+        ? '已拒绝'
+        : call.approval?.status === 'expired'
+          ? '审批过期'
+          : null
 
   return (
     <div className={`my-2 overflow-hidden rounded-lg border bg-white ${style.ring}`}>
@@ -68,6 +80,11 @@ export function ToolCard({ call }: { call: ToolCallView }) {
         <Wrench className="h-3.5 w-3.5 shrink-0 text-slate-500" />
         <span className="shrink-0 font-medium text-slate-700">{call.name}</span>
         <span className="truncate font-mono text-xs text-slate-500">{summary}</span>
+        {approvalLabel && (
+          <span className="shrink-0 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">
+            {approvalLabel}
+          </span>
+        )}
         <span
           className={`ml-auto flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${style.badge}`}
         >

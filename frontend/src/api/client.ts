@@ -81,6 +81,12 @@ export const api = {
     request<UsageStats>(
       `/stats${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`,
     ),
+  /** 人工审批：同意/拒绝一次危险工具调用 */
+  approveToolCall: (approvalId: string, approved: boolean, reason = '') =>
+    request<{ ok: boolean; approval_id: string; approved: boolean }>('/chat/approve', {
+      method: 'POST',
+      body: JSON.stringify({ approval_id: approvalId, approved, reason }),
+    }),
   sessions: (limit = 20) => request<{ sessions: SessionInfo[] }>(`/sessions?limit=${limit}`),
   session: (id: string) =>
     request<{ session: SessionInfo; messages: ApiMessage[]; system_prompt: string }>(

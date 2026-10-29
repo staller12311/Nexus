@@ -49,6 +49,14 @@ function applyEvent(
         asString(event.content),
       )
       break
+    case 'approval_required':
+      // 危险工具挂起：把审批信息挂到对应工具卡片上，等待用户点同意/拒绝
+      get().markApprovalRequired(
+        asString(event.tool_call_id),
+        asString(event.approval_id),
+        typeof event.expires_in === 'number' ? event.expires_in : undefined,
+      )
+      break
     case 'text_delta':
       get().appendDelta(asString(event.delta))
       break
@@ -197,6 +205,10 @@ type ChatState = {
   beginMessage: () => void
   startToolCall: (id: string, name: string, args: string) => void
   endToolCall: (id: string, ok: boolean, content: string) => void
+  /** SSE approval_required：给工具卡片挂上「待审批」状态 */
+  markApprovalRequired: (toolCallId: string, approvalId: string, expiresIn?: number) => void
+  /** 提交审批决定；404/409（过期/重复）只在本地说说明，不打断主流程 */
+  approveToolCall: (approvalId: string, approved: boolean) => Promise<void>
   finishMessage: (usage?: Usage) => void
   reset: () => void
 }
@@ -852,6 +864,57 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })
       return { messages }
     }),
+
+  markApprovalRequired: (toolCallId, approvalId, expiresIn) =>
+    set((state) => ({
+      messages: state.messages.map((message) => {
+        if (!message.toolCalls?.some((call) => call.id === toolCallId)) return message
+        return {
+          ...message,
+          toolCalls: message.toolCalls.map((call) =>
+            call.id === toolCallId
+              ? {
+                  ...call,
+                  approval: {
+                    id: approvalId,
+                    status: 'pending' as const,
+                    ...(expiresIn !== undefined ? { expiresIn } : {}),
+                  },
+                }
+              : call,
+          ),
+        }
+      }),
+    })),
+
+  approveToolCall: async (approvalId, approved) => {
+    const setApprovalStatus = (status: 'approved' | 'rejected' | 'expired') =>
+      set((state) => ({
+        messages: state.messages.map((message) => {
+          if (!message.toolCalls?.some((call) => call.approval?.id === approvalId)) return message
+          return {
+            ...message,
+            toolCalls: message.toolCalls.map((call) =>
+              call.approval?.id === approvalId
+                ? { ...call, approval: { ...call.approval, status } }
+                : call,
+            ),
+          }
+        }),
+      }))
+
+    try {
+      await api.approveToolCall(approvalId, approved)
+      setApprovalStatus(approved ? 'approved' : 'rejected')
+    } catch (error) {
+      // 404/409：审批已过期/已被处理（重复点击、流已结束）；提示一下即可，不打断对话
+      setApprovalStatus('expired')
+      set({
+        notice:
+          error instanceof Error ? `审批未生效：${error.message}` : '审批未生效，可能已过期',
+      })
+    }
+  },
 
   finishMessage: (usage) => {
     get().flushDeltas()

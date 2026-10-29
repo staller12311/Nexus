@@ -68,6 +68,16 @@ export type UsageStats = {
 
 export type ToolCallStatus = 'pending' | 'success' | 'error'
 
+/** 人工审批状态：pending 时展示审批卡片；决定后展示结果 */
+export type ToolApprovalStatus = 'pending' | 'approved' | 'rejected' | 'expired'
+
+export type ToolApproval = {
+  id: string
+  status: ToolApprovalStatus
+  /** 后端给的等待上限（秒），用于提示 */
+  expiresIn?: number
+}
+
 export type ToolCallView = {
   id: string
   name: string
@@ -75,6 +85,8 @@ export type ToolCallView = {
   arguments: string
   status: ToolCallStatus
   content?: string
+  /** 需要人工审批的工具才会带这个字段（来自 SSE approval_required） */
+  approval?: ToolApproval
 }
 
 export type ChatMessage = {
