@@ -76,8 +76,11 @@ function uploadFile<T>(path: string, file: File, onProgress?: (percent: number) 
 
 export const api = {
   models: () => request<ModelInfo[]>('/models'),
-  /** 全库累计用量（底部状态栏）：总 tokens、整体缓存命中率 */
-  stats: () => request<UsageStats>('/stats'),
+  /** token 用量统计：默认按当前会话（传 sessionId）；不传为全库 */
+  stats: (sessionId?: string | null) =>
+    request<UsageStats>(
+      `/stats${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`,
+    ),
   sessions: (limit = 20) => request<{ sessions: SessionInfo[] }>(`/sessions?limit=${limit}`),
   session: (id: string) =>
     request<{ session: SessionInfo; messages: ApiMessage[]; system_prompt: string }>(

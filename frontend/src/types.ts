@@ -53,15 +53,17 @@ export type Usage = {
   cache_hit_tokens: number
 }
 
-/** 全库累计用量（GET /api/stats），底部状态栏静默展示 */
+/** token 用量统计（GET /api/stats），底部状态栏静默展示 */
 export type UsageStats = {
   sessions: number
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
   cache_hit_tokens: number
-  /** 0–1 的整体缓存命中率 */
+  /** 0–1 的缓存命中率 = cache_hit_tokens / prompt_tokens（分母不含 completion） */
   cache_hit_rate: number
+  /** 按会话统计时的会话 id；全库统计为 null */
+  session_id?: string | null
 }
 
 export type ToolCallStatus = 'pending' | 'success' | 'error'

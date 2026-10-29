@@ -19,8 +19,6 @@ import type {
 let counter = 0
 /** 正在进行的这一轮流式请求的中断句柄（不在响应式 state 里，避免无谓重渲染） */
 let activeAbort: AbortController | null = null
-/** 本轮流式请求的开始时间（算 tok/s 用；只在内存里） */
-let turnStartedAt = 0
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException
@@ -140,8 +138,6 @@ type ChatState = {
   stats: UsageStats | null
   /** 当前会话上下文占用率 0–1（最近一轮 prompt_tokens / 模型 context_window） */
   contextUsage: number | null
-  /** 最近一轮生成速度（completion_tokens / 秒）；只在实时流式后可见 */
-  lastTokensPerSecond: number | null
   loadWorkspace: () => Promise<void>
   /** 静默刷新全库 token 统计（失败不打扰） */
   loadStats: () => Promise<void>
@@ -227,13 +223,14 @@ const initialState = {
   workspaceExtras: [] as WorkspaceExtra[],
   stats: null as UsageStats | null,
   contextUsage: null as number | null,
-  lastTokensPerSecond: null as number | null,
 }
 
 // 流式文本的节流缓冲：每 FLUSH_INTERVAL_MS 才真正 set 一次 state，
 // 避免「每个 token 一次 React 渲染」（README 第 54 条）。
 // 工作区请求序号：用于丢弃「切换之后才返回」的过期 GET 响应
 let workspaceRequestId = 0
+// 统计请求序号：切会话后旧请求的结果不能覆盖新会话的数据
+let statsRequestId = 0
 
 const FLUSH_INTERVAL_MS = 50
 let pendingDelta = ''
@@ -301,8 +298,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         error: null,
         draft: '',
         systemPrompt: '', // 新会话还没有自定义提示词，走配置默认
+        stats: null,
+        contextUsage: null,
       })
       await get().refreshSessions()
+      void get().loadStats()
     } catch (error) {
       set({ error: error instanceof Error ? error.message : '新建会话失败' })
     }
@@ -332,8 +332,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
           lastUsage && contextWindow && lastUsage.prompt_tokens > 0
             ? Math.min(lastUsage.prompt_tokens / contextWindow, 1)
             : null,
-        lastTokensPerSecond: null,
       })
+      // 会话级统计：打开会话后立刻拉一次（口径锁定这个会话）
+      void get().loadStats()
     } catch (error) {
       set({ error: error instanceof Error ? error.message : '打开会话失败' })
     }
@@ -393,8 +394,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   loadStats: async () => {
+    // 统计口径锁定「当前会话」：跨会话混算会让单条消息的命中率与累计值对不上
+    const sessionId = get().sessionId
+    if (!sessionId) {
+      set({ stats: null })
+      return
+    }
+    const requestId = ++statsRequestId
     try {
-      set({ stats: normalizeStats(await api.stats()) })
+      const stats = normalizeStats(await api.stats(sessionId))
+      if (requestId !== statsRequestId) return // 切会话后才返回的旧响应直接丢弃
+      set({ stats })
     } catch {
       // 静默：统计是锦上添花，后端不可用时不显示即可
     }
@@ -679,7 +689,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     let sessionId = get().sessionId
     const controller = new AbortController()
     activeAbort = controller
-    turnStartedAt = Date.now()
     try {
       if (!sessionId) {
         // 新会话第一次发言：先建会话（模块 5 会把历史列表刷新接进来）
@@ -766,7 +775,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const controller = new AbortController()
     activeAbort = controller
-    turnStartedAt = Date.now()
     try {
       await streamRegenerate({
         sessionId,
@@ -865,13 +873,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         usage && contextWindow && usage.prompt_tokens > 0
           ? Math.min(usage.prompt_tokens / contextWindow, 1)
           : state.contextUsage
-      // 生成速度：本轮 completion_tokens / 实际耗时（客户端侧测量，仅实时可见）
-      const elapsedSeconds = turnStartedAt > 0 ? (Date.now() - turnStartedAt) / 1000 : 0
-      const lastTokensPerSecond =
-        usage && usage.completion_tokens > 0 && elapsedSeconds > 0
-          ? usage.completion_tokens / elapsedSeconds
-          : state.lastTokensPerSecond
-      return { messages, streaming: false, contextUsage, lastTokensPerSecond }
+      return { messages, streaming: false, contextUsage }
     })
     // 一轮结束后静默刷新全库统计（失败不打扰用户）
     void get().loadStats()

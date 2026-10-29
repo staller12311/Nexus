@@ -97,11 +97,14 @@ def list_tools(request: Request) -> ToolsOut:
 @router.get(
     "/stats",
     response_model=StatsOut,
-    summary="全库累计 token 用量与整体缓存命中率",
+    summary="token 用量统计（默认按当前会话；不传 session_id 则为全库）",
 )
-def get_stats(request: Request) -> StatsOut:
+def get_stats(request: Request, session_id: str | None = Query(default=None)) -> StatsOut:
     service = get_service(request)
-    return StatsOut(**service.stats())
+    try:
+        return StatsOut(**service.stats(session_id))
+    except StorageError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------- 自定义模型

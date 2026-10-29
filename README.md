@@ -278,11 +278,11 @@ python -m agent config check    # 打印将要使用的配置；密钥缺失时�
 > 必须用 `python -m pytest`（而不是裸 `pytest`）：测试通过包名 `agent.*` 导入，
 > 需要仓库根目录在 `sys.path` 上，`python -m` 会把当前目录加进去。
 
-当前全量：**288 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
+当前全量：**290 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
 后端用例：`tests/test_backend_service.py` 的 10 个 API 冒烟 + 1 条 SQLite 并发回归；
 本轮新增 10 条 token/缓存统计用例（`Usage` 双厂商缓存字段解析、`usage_json` 落库与回放、
-`/api/stats` 聚合），总数从 278 增至 288。
-前端：33 个测试文件 / 184 passed + 6 skipped（含 5 条模型菜单布局用例与 4 条状态栏/usage 用例）。
+`/api/stats` 聚合），另加 2 条会话级统计口径用例（prompt-only 分母、未知会话 404），总数从 278 增至 290。
+前端：34 个测试文件 / 190 passed + 6 skipped（含 5 条模型菜单布局用例、6 条状态栏/统计口径/成本估算用例）。
 
 ## 如何新增一个工具
 
@@ -427,7 +427,7 @@ cd frontend && npm run dev                            # http://localhost:5173
 | PATCH | `/api/sessions/{id}/system_prompt` | `{system_prompt}` | `{session_id, system_prompt, created, seq}` |
 | POST | `/api/chat/stream` | `{session_id, message, model?}` | `text/event-stream` |
 | GET | `/api/health` | — | `{status:"ok", python, integrity, write_warning}`（含运行时诊断） |
-| GET | `/api/stats` | — | `{sessions, prompt_tokens, completion_tokens, total_tokens, cache_hit_tokens, cache_hit_rate}`（全库累计，底部状态栏用） |
+| GET | `/api/stats?session_id=` | — | `{sessions, prompt_tokens, completion_tokens, total_tokens, cache_hit_tokens, cache_hit_rate, session_id}`（默认按当前会话；不传 `session_id` 为全库诊断口径） |
 | GET | `/api/config/workspace` | — | `{workspace, default_workspace, is_default, extras:[{name, path, writable}]}` |
 | POST | `/api/config/workspace` | `{path, extras?:[{name, path, writable}]}` | 同上结构；合法 200、非法 400（切换后下一句话立即生效） |
 | DELETE | `/api/config/workspace` | — | 同上结构（恢复默认工作区并清空附加挂载） |
@@ -623,7 +623,7 @@ Web 界面（第一阶段 CLI 之外的增量交付）：
 - [x] **多根工作区**：`@name` 命名挂载（`agent.extra_workspaces`），只读默认、越界红线不变（第 59 条）
 - [x] **文件 CRUD 工具**：`create_dir` / `delete_path` / `move_path`，权限报错改成可操作的人话（第 61–62 条）
 - [x] **运行时诊断**：`GET /api/health` 返回 `python` / `integrity` / `write_warning`（第 62 条②）
-- [x] **极客状态栏**：单轮 usage（含缓存命中率）+ `GET /api/stats` 全库累计 + 上下文占用率（第 63 条）
+- [x] **极客状态栏**：单轮 usage（含缓存命中率）+ 会话级 `GET /api/stats` + 上下文占用 + 省钱估算（第 63 条）
 - [x] **极简侧边栏 + 输入框内模型选择**：黑灰白配色、向上弹出的模型菜单（第 64 条）
 
 ## 已知待办
@@ -1691,7 +1691,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 写 @libs 的要求: 模型自己拒绝（只读挂载），且 @libs 文件内容未被改动（PORT 仍 8080）
 ```
 
-`pytest` 仍 288 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
+`pytest` 仍 290 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
 
 ### 60. 目录选择器：点着选，不用手打绝对路径
 
@@ -1843,9 +1843,9 @@ main.py
 src/components/__init__.py
 ```
 
-### 63. Token 统计与「极客状态栏」：缓存命中率、上下文占用、实时 tok/s
+### 63. Token 统计与「极客状态栏」：会话级缓存命中、上下文占用、省钱估算
 
-**需求**：底部状态栏静默展示「⚡ tok/s | 📚 累计 tok · 缓存命中 %」；每条 AI 消息底部显示本轮
+**需求**：底部状态栏静默展示当前会话的 token 消耗与缓存节省；每条 AI 消息底部显示本轮
 `prompt 1200 (命中 90%) / completion 50 / total 1250`。
 
 **后端**（三层，全部向后兼容）：
@@ -1855,21 +1855,28 @@ src/components/__init__.py
 - `agent/storage.py`：`sessions.cache_hit_tokens` 与 `messages.usage_json` 两列，`_migrate()`
   自动给旧库补列；`add_usage(..., cache_hit_tokens=)` 累加；`get_messages(with_usage=True)` 才回放
   `usage`（默认不带，绝不污染发回模型的请求）；新增 `usage_totals()` 全库聚合。
-- `backend/`：`message_end.usage` 透传 `cache_hit_tokens` / `cache_hit_rate`；新增只读接口
-  `GET /api/stats`；`/api/models` 补 `context_window` 供前端算上下文占用。
+- `backend/`：`message_end.usage` 透传 `cache_hit_tokens` / `cache_hit_rate`；
+  `GET /api/stats?session_id=` 默认返回**当前会话**的累计值（不传为全库诊断口径）；
+  `/api/models` 补 `context_window` 供前端算上下文占用。
+
+**口径（修过一次的真实 bug）**：
+- 命中率 = `cache_hit_tokens / prompt_tokens`，**completion 永不进分母**（专项用例：
+  prompt=1000 / completion=500 / cache=940 → 0.94，而不是 0.63）。
+- 第一版按「全库」累计：旧会话没有缓存字段（按 0 计）会把当前会话 90%+ 的命中率稀释成 6–7%，
+  与单条消息严重矛盾。现在默认按**当前会话**聚合，单条消息与累计值统计范围一致；
+  切会话后旧响应按请求序号丢弃，不会串数据。
 
 **前端**：
 - 单条消息：usage 从 hover 操作区移到**常驻**的 10px 灰字行
   （`prompt X (命中 Y%) / completion Z / total T`），历史消息由 `usage_json` 回放。
-- 全局状态栏（Composer 卡片底部）：`⚡ 最近一轮 tok/s | 📚 全库累计 · 缓存命中率 | 🌡️ 上下文占用`；
-  10px 低对比灰字，容器 `overflow-hidden` 保证不溢出卡片。
-- 口径：`tok/s = 本轮 completion_tokens / 客户端测得耗时`（仅实时可见）；
-  `上下文占用 ≈ 最近一轮 prompt_tokens / context_window`（单轮精确、多轮工具调用为近似值，仅作提示）；
-  全库命中率 = 累计 cache_hit_tokens / 累计 prompt_tokens（旧库无缓存字段会被按 0 计入）。
+- 状态栏（Composer 卡片底部）：`Database 累计 {tok} | Zap 节省 {rate}（约 ¥{money}）| Brain 当前上下文 {pct}`；
+  全部使用 lucide 线性图标 + `gray-400/600` 灰阶，不用 Emoji、不用彩色，
+  容器 `overflow-hidden` 保证不溢出卡片；无数据时显示「暂无数据」。
+- 省钱估算：`src/lib/pricing.ts` 里 `0.001 元/千 token` 的默认输入单价 × 命中 tokens，
+  NaN/负数/Infinity 一律夹到 0（有纯函数测试）；上下文占用 ≈ 最近一轮 `prompt_tokens / context_window`。
 
-**实测**（真实 deepseek，一句话）：`prompt 1624 (命中 87%) / completion 2 / total 1626`；
-`/api/stats` 同步累加，会话详情回放同一 usage。新增 10 条 pytest 用例覆盖双厂商字段解析、
-`usage_json` 落库/回放边界（默认不带、显式才带）、`/api/stats` 聚合与旧库迁移。
+**实测**：同一会话里单条 `prompt 3125 (命中 94%)`、会话累计 **84.4%**、全库 6.7% —— 状态栏现在展示
+84.4%（会话口径），不再被历史旧会话稀释；`/api/stats?session_id=...` 只返回该会话的数值。
 
 ### 64. 侧边栏极简化 + 模型选择器迁入输入框（对齐 Cursor 的层级与配色）
 
@@ -1895,4 +1902,4 @@ src/components/__init__.py
 
 **测试**：新增 `ModelMenu.test.tsx` 5 条（侧边栏无模型控件、菜单向上弹出且 `z-50`、选择写回 store、
 底部入口打开弹窗、streaming 时禁用/仍可管理）；`ModelManager` / `ModelPicker` / `FetchModels` / `App`
-等用例改为从 Composer 进入。前端 33 文件 / 184 passed + 6 skipped；`tsc --noEmit` 通过。
+等用例改为从 Composer 进入。前端 34 文件 / 190 passed + 6 skipped（统计口径修正后）；`tsc --noEmit` 通过。

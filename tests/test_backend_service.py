@@ -406,3 +406,31 @@ def test_models_expose_context_window(api) -> None:
     client, _service, _config = api
     models = {item["name"]: item for item in client.get("/api/models").json()}
     assert models["fake"]["context_window"] > 0
+
+def test_stats_session_scoped_uses_prompt_only_denominator(api) -> None:
+    """命中率分母只能是 prompt_tokens：completion 再大也不能把命中率稀释。"""
+    client, service, _config = api
+    with service._storage() as storage:
+        session = storage.create_session("fake")
+        storage.add_usage(
+            session.id,
+            prompt_tokens=1000,
+            completion_tokens=500,
+            total_tokens=1500,
+            cache_hit_tokens=940,
+        )
+
+    body = client.get(f"/api/stats?session_id={session.id}").json()
+    assert body["session_id"] == session.id
+    assert body["sessions"] == 1
+    assert body["prompt_tokens"] == 1000
+    assert body["completion_tokens"] == 500
+    assert body["total_tokens"] == 1500
+    assert body["cache_hit_tokens"] == 940
+    # 940 / 1000 = 0.94，而不是 940 / 1500 = 0.63
+    assert body["cache_hit_rate"] == 0.94
+
+
+def test_stats_unknown_session_returns_404(api) -> None:
+    client, _service, _config = api
+    assert client.get("/api/stats?session_id=nope").status_code == 404

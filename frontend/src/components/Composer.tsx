@@ -1,7 +1,8 @@
-import { Paperclip, Plus, SendHorizonal, ShieldCheck, Square } from 'lucide-react'
+import { Brain, Database, Paperclip, Plus, SendHorizonal, ShieldCheck, Square, Zap } from 'lucide-react'
 import { WorkspaceDialog } from './WorkspaceDialog'
 import { ModelManagerDialog } from './ModelManagerDialog'
 import { ModelMenu } from './ModelMenu'
+import { formatMoney, formatRate, INPUT_PRICE_PER_1K_TOKENS, savedAmount } from '../lib/pricing'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useChatStore } from '../store/chatStore'
@@ -21,10 +22,6 @@ function formatTokens(value: number): string {
   return String(Math.max(0, Math.round(value)))
 }
 
-function formatPercent(rate: number): string {
-  return `${Math.round(Math.max(0, Math.min(rate, 1)) * 100)}%`
-}
-
 export function Composer() {
   const draft = useChatStore((state) => state.draft)
   const setDraft = useChatStore((state) => state.setDraft)
@@ -38,7 +35,6 @@ export function Composer() {
   const loadWorkspace = useChatStore((state) => state.loadWorkspace)
   const stats = useChatStore((state) => state.stats)
   const contextUsage = useChatStore((state) => state.contextUsage)
-  const lastTokensPerSecond = useChatStore((state) => state.lastTokensPerSecond)
   const models = useChatStore((state) => state.models)
   const model = useChatStore((state) => state.model)
   const setModel = useChatStore((state) => state.setModel)
@@ -90,6 +86,10 @@ export function Composer() {
   const sandboxTitle = workspace
     ? `安全沙箱保护中：${workspace}。${SANDBOX_HINT}点击切换工作区。`
     : `${SANDBOX_HINT}点击切换工作区。`
+
+  // 节省金额与命中率都来自后端（分母只有 prompt tokens）；数据缺失时给「暂无数据」
+  const hasStats = Boolean(stats && stats.prompt_tokens > 0)
+  const savings = hasStats ? savedAmount(stats?.cache_hit_tokens ?? 0) : 0
 
   return (
     <div>
@@ -206,27 +206,41 @@ export function Composer() {
             </div>
           </div>
 
-          {/* 底部状态栏：极小、低对比度灰字，收在卡片内部；全局统计静默展示 */}
-          <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-3.5 py-0.5 text-[10px] leading-4 text-slate-400">
+          {/* 底部状态栏：极简线条图标 + 灰字；Token / 节省 / 上下文，不收 Emoji */}
+          <div className="flex items-center justify-between gap-3 border-t border-gray-100 px-3.5 py-0.5 text-[10px] leading-4 text-gray-400">
             <span className="shrink-0 truncate">
               {streaming ? 'AI 正在回答……' : 'Enter 发送 · Shift+Enter 换行'}
             </span>
-            <span className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap">
-              {lastTokensPerSecond !== null && lastTokensPerSecond > 0 && (
-                <span className="shrink-0" title="最近一轮生成速度（客户端实测）">
-                  ⚡ {Math.round(lastTokensPerSecond)} tok/s
+            <span className="flex min-w-0 items-center gap-3 overflow-hidden whitespace-nowrap">
+              <span className="flex shrink-0 items-center gap-1" title="当前会话累计 token 消耗">
+                <Database className="h-3 w-3 text-gray-400" />
+                累计{' '}
+                <span className="text-gray-600">{formatTokens(stats?.total_tokens ?? 0)}</span> tok
+              </span>
+              <span
+                className="flex shrink-0 items-center gap-1"
+                title={`按输入 ${INPUT_PRICE_PER_1K_TOKENS} 元/千 token 粗略估算`}
+              >
+                <Zap className="h-3 w-3 text-gray-400" />
+                {hasStats ? (
+                  <>
+                    节省{' '}
+                    <span className="text-gray-600">{formatRate(stats?.cache_hit_rate ?? 0)}</span>
+                    <span className="text-gray-400">（约 {formatMoney(savings)}）</span>
+                  </>
+                ) : (
+                  <>
+                    节省 <span className="text-gray-500">暂无数据</span>
+                  </>
+                )}
+              </span>
+              <span className="flex shrink-0 items-center gap-1" title="当前会话上下文占用率（约值）">
+                <Brain className="h-3 w-3 text-gray-400" />
+                当前上下文{' '}
+                <span className="text-gray-600">
+                  {contextUsage !== null ? formatRate(contextUsage, 0) : '—'}
                 </span>
-              )}
-              {stats && stats.total_tokens > 0 && (
-                <span className="shrink-0" title="全库累计消耗 · 整体缓存命中率">
-                  📚 {formatTokens(stats.total_tokens)} tok · 命中 {formatPercent(stats.cache_hit_rate)}
-                </span>
-              )}
-              {contextUsage !== null && (
-                <span className="shrink-0" title="当前会话上下文占用率（约值）">
-                  🌡️ {formatPercent(contextUsage)}
-                </span>
-              )}
+              </span>
             </span>
             <span className="hidden shrink-0 md:inline">内容由模型生成，请自行核对</span>
           </div>

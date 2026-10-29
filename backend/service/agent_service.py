@@ -424,10 +424,30 @@ class AgentService:
                 storage.get_messages(record.id, with_reasoning=True, with_usage=True),
             )
 
-    def stats(self) -> dict[str, Any]:
-        """全库累计用量（/api/stats）：会话数、token 总量与整体缓存命中率。"""
-        with self._storage() as storage:
-            totals = storage.usage_totals()
+    def stats(self, session_id: str | None = None) -> dict[str, Any]:
+        """token 用量统计（/api/stats），供前端底部状态栏展示。
+
+        - 传 ``session_id``：只统计**当前会话**（默认口径，保证数据连贯：同一个会话里
+          单条消息的命中率与累计命中率才对得上）；
+        - 不传：全库累计（保留给诊断/脚本用）。
+
+        命中率口径固定为 **cache_hit_tokens / prompt_tokens**，completion 绝不进分母。
+        """
+        if session_id:
+            with self._storage() as storage:
+                record = storage.find_session(session_id)
+                totals = {
+                    "sessions": 1,
+                    "prompt_tokens": record.prompt_tokens,
+                    "completion_tokens": record.completion_tokens,
+                    "total_tokens": record.total_tokens,
+                    "cache_hit_tokens": record.cache_hit_tokens,
+                    "session_id": record.id,
+                }
+        else:
+            with self._storage() as storage:
+                totals = storage.usage_totals()
+            totals["session_id"] = None
         prompt_tokens = totals["prompt_tokens"]
         totals["cache_hit_rate"] = (
             round(totals["cache_hit_tokens"] / prompt_tokens, 4) if prompt_tokens > 0 else 0.0

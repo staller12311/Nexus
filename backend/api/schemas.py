@@ -121,15 +121,18 @@ class ToolsOut(BaseModel):
 
 
 class StatsOut(BaseModel):
-    """全库累计用量（GET /api/stats），供前端底部状态栏静默展示。"""
+    """token 用量统计（GET /api/stats），供前端底部状态栏静默展示。"""
 
-    sessions: int = Field(description="会话总数")
-    prompt_tokens: int = Field(description="所有会话累计 prompt tokens")
-    completion_tokens: int = Field(description="所有会话累计 completion tokens")
-    total_tokens: int = Field(description="所有会话累计消耗")
+    sessions: int = Field(description="统计范围内的会话数（按会话统计时恒为 1）")
+    prompt_tokens: int = Field(description="prompt tokens 累计（命中率的分母只有它）")
+    completion_tokens: int = Field(description="completion tokens 累计")
+    total_tokens: int = Field(description="token 总消耗")
     cache_hit_tokens: int = Field(description="累计缓存命中的 prompt tokens")
     cache_hit_rate: float = Field(
-        description="整体缓存命中率（0–1）= cache_hit_tokens / prompt_tokens"
+        description="缓存命中率（0–1）= cache_hit_tokens / prompt_tokens，与 completion 无关"
+    )
+    session_id: str | None = Field(
+        default=None, description="按会话统计时的会话 id；全库统计为 null"
     )
 
 
