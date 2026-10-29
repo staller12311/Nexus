@@ -403,6 +403,22 @@ cd frontend && npm run dev                            # http://localhost:5173
 后端读配置的规则与 CLI 完全一致（`--config` 不适用于 uvicorn，用 `AGENT_CONFIG` 或
 `./config.yaml`）。依赖：`fastapi` / `uvicorn`（已在 `.venv` 里，无需额外安装）。
 
+### 一键启动（Windows，推荐日常使用）
+
+根目录双击 `start.bat`（内部调用 `scripts/start.ps1`）：
+
+- 后端：自动设置 `PYTHONPATH=D:\MyAi\.venv\Lib\site-packages`，用
+  `D:\python3.11\python.exe -m uvicorn backend.main:app --port 8000` 静默启动；
+- 前端：在 `frontend/` 里跑 `npm run dev`（与后端共用同一个控制台，输出写日志，不弹额外黑窗口）；
+- 自动开浏览器：等前端就绪（至少 3 秒）后调用系统默认浏览器打开 `http://localhost:5173`；
+- **停止**：按 `Ctrl+C` 或直接关闭这个黑窗口，会同时结束 python/node 进程并释放 8000/5173。
+  若按 `Ctrl+C` 后出现 `Terminate batch job (Y/N)?`，按 `Y` 即可（此时清理已经完成）；
+- 端口被占用会直接报错退出，不会覆盖已有服务。
+
+前置条件：Node.js 在 PATH、`frontend/node_modules` 已安装（`cd frontend && npm install`）、
+`D:\python3.11\python.exe` 存在（不存在则退回 `.venv` Python，此时写外部工作区可能受完整性级别限制）。
+日志：`data/backend.log`、`data/backend.err.log`、`data/frontend.log`、`data/frontend.err.log`。
+
 ### REST 端点
 
 | 方法 | 路径 | 请求体 | 响应 |
