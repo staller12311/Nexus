@@ -1955,6 +1955,11 @@ src/components/__init__.py
   `write_file`、`create_dir` 不在集合内（沙箱内静默执行，覆盖已有文件时结果会注明
   「文件已存在，已执行覆盖」）。CLI 用终端 y/N，非 TTY 自动拒绝。
 
+**信任边界（重要）**：在**完全信任的本地沙箱环境**（自己的开发机、workspace 也是自己的代码）里，
+可以把 `tools.require_approval` 设为 `false`，获得最高效率的编码体验——所有工具（含
+`run_python_code` / `delete_path` / `run_shell`）静默执行、不再弹审批框；如果 workspace 可能包含
+他人代码、下载来的脚本或任何不可信输入，请保持 `require_approval: true`，否则等于把执行权限直接交给模型。
+
 **前端**：`approval_required` 事件把 `approval` 状态挂到对应工具卡片上，`ApprovalCard` 渲染黄色卡片：
 `write_file` 解析 `path`/`content`，用只读 `CodeBlock`（行号 + 高亮）展示即将写入的内容
 （超 200 行折叠并提示「同意后完整写入」；默认审批集合已不含 write_file，但把它加回配置时
