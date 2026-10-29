@@ -68,10 +68,11 @@ models:
     api_key_env: MOONSHOT_API_KEY          # 只写「环境变量名」，不写密钥本身
     temperature: 0.3
     max_tokens: 4096
-    context_window: 131072
+    context_window: 8192                  # 按模型官方文档填真实上下文窗口
 ```
 
 - `base_url` / `model` / `api_key_env` 是必填；`temperature` / `max_tokens` / `context_window` 可省，默认 0.7 / 4096 / 32768。
+  自定义模型未显式配置时按 **128K** 保守估计；已知 1M 模型（DeepSeek-V4 系列 / qwen3.8-flash 等）自动按 1M 计算。
 - `api_key_env` 只是变量名。**密钥永远不写进 YAML**（第 5 条设计决策）。
 - 同一份配置里可以并列多个 provider，用 `--model` 或 `/model` 切换。
 
@@ -114,7 +115,7 @@ base_url              https://api.moonshot.cn/v1
 api_key_env           MOONSHOT_API_KEY: 已设置
 temperature           0.3
 max_tokens            4096
-context_window        131072
+context_window        8192
 request_timeout       60s
 max_retries           3
 max_tool_rounds       8
@@ -278,10 +279,10 @@ python -m agent config check    # 打印将要使用的配置；密钥缺失时�
 > 必须用 `python -m pytest`（而不是裸 `pytest`）：测试通过包名 `agent.*` 导入，
 > 需要仓库根目录在 `sys.path` 上，`python -m` 会把当前目录加进去。
 
-当前全量：**323 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
+当前全量：**328 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
 后端用例：`tests/test_backend_service.py` 覆盖工作区 / 知识库 / 自定义模型 / 用量统计 / 审批接口；
-本轮新增非法 JSON 本地拦截 2 条（loop 单元 + 真实 HTTP 假端点逐请求校验）与
-`run_python_code` / 审批相关修正，总数从 321 增至 323。
+本轮新增上下文管理 4 条（工具参数压缩、80% 摘要替换、摘要失败回退、1M 窗口识别），
+以及此前的非法 JSON 本地拦截 / 审批修正，总数从 321 增至 328。
 前端：37 个测试文件 / 199 passed + 6 skipped（含审批卡片、审批+流式稳定性、错误边界、模型菜单、状态栏用例）。
 
 ## 如何新增一个工具
@@ -620,7 +621,7 @@ cd frontend && npm run test
 - [x] **三种用法示例**：`run "问题"` / `chat` / `sessions resume <id>`，均在 `## 运行`，附真实终端输出
 - [x] **如何新增一个模型**：`### 如何新增一个模型`（Moonshot 示例 + `.env` 步骤 + 真实 `config check` 输出）
 - [x] **如何新增一个工具**：`## 如何新增一个工具`（`get_time` 示例 + 5 步改动 + 真实 `tools list` / `run` 输出）
-- [x] **「设计决策」章节**：`## 设计决策`（67 条，含 Web 阶段的 34–67）
+- [x] **「设计决策」章节**：`## 设计决策`（68 条，含 Web 阶段的 34–68）
 
 Web 界面（第一阶段 CLI 之外的增量交付）：
 
@@ -649,6 +650,8 @@ Web 界面（第一阶段 CLI 之外的增量交付）：
   默认关闭、默认纳入审批集合（第 66 条）
 - [x] **非法 JSON arguments 本地拦截**：构造历史前 `json.loads` 校验，非法参数替换为 `{}`
   并回灌错误，彻底避免上游 400 与无脑重试（第 67 条）
+- [x] **上下文记忆管理**：大代码 tool_call 历史压缩 + 1M 窗口识别 + 超 80% 用后台摘要
+  替换最旧 10 条消息（第 68 条）
 
 ## 已知待办
 
@@ -1715,7 +1718,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 写 @libs 的要求: 模型自己拒绝（只读挂载），且 @libs 文件内容未被改动（PORT 仍 8080）
 ```
 
-`pytest` 仍 323 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
+`pytest` 仍 328 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
 
 ### 60. 目录选择器：点着选，不用手打绝对路径
 
@@ -2011,3 +2014,35 @@ src/components/__init__.py
 **验证**：`tests/test_loop.py` 覆盖单条与多 tool_call 的非法 arguments 拦截；
 `tests/test_mock_server.py` 用真实 HTTP 假端点抓取每个请求体，断言所有
 `tool_calls[].function.arguments` 都能被 `json.loads` 解析，并验证非法调用未真正写文件。
+
+### 68. 上下文记忆：大参数压缩 + 1M 窗口 + 自动摘要（不再粗暴裁剪）
+
+**问题**：写长代码时上下文瞬间 100%。旧实现有三个叠加原因：
+① 写文件的 `tool_call.arguments` 里带着完整代码，历史每轮都重发；
+② 模型上下文窗口按 32K 估，实际 DeepSeek-V4 / Qwen3.8-Flash 都是 **1M**；
+③ 超限后 `trim_history` 直接从最旧消息砍起，模型「失忆」。
+
+**① 大参数历史压缩**（`agent/loop.py`）：`write_file` / `run_python_code` 的 `arguments`
+超过 2000 字符时，发给模型的历史里替换成合法占位 JSON：
+`{"path":"snake.js","content":"（21540 字符的代码已写入文件，历史中省略）"}`。
+磁盘文件与前端展示不受影响；工具返回值本身也一直是「已写入 xxx，X 字节」，从不回显代码。
+
+**② 真实上下文窗口**：按官方文档把内置 `deepseek` 调到 **1,000,000**
+（DeepSeek-V4 上下文 1M，输出最大 384K）；Qwen3.8-Flash 官方文档同样为
+**上下文 1,000,000 / 最大输入 991,808**。自定义模型无法从配置读取时：
+已知模型（deepseek-v4* / qwen3.8* / qwen3.7* / qwen-turbo 等）按 1M，其余按 128K 保守估计。
+`/api/models` 返回该值，前端状态栏占用率的分母随之同步；≥80% 变琥珀色、≥95% 变玫红。
+
+**③ 自动摘要压缩**（替代直接裁剪）：每轮请求前检查估算 tokens（优先用上一轮真实
+`prompt_tokens`，否则按 2.5 字符/token 估算）。达到 `context_window × context_summary_trigger`
+（默认 80%）时：
+- 取最旧的 `context_summary_messages`（默认 10）条消息（按「assistant(tool_calls)+tool」整组取，绝不切断工具组）；
+- 调用**后台静默模型**（同模型、`temperature=0.2`、`max_tokens=512`）压成 ≤200 字摘要，
+  形如「用户之前要求写贪吃蛇，模型遇到 JSON 报错，最后修正了文件」；
+- 摘要追加进 system 提示词的「【历史记忆摘要】」块，原消息从上下文移除；DB 完整历史不动
+  （前端回放仍是全文），失败则静默退回旧的按条数裁剪。
+配置：`agent.context_summary_trigger` / `agent.context_summary_messages`；
+摘要模式下不再按 `max_history_messages` 砍历史（该配置只作为未启用摘要时的兜底）。
+
+**验证**：`tests/test_loop.py` 覆盖参数压缩、摘要替换与最近两轮保留、摘要失败回退；
+`tests/test_backend_service.py` 覆盖 qwen3.8-flash 自定义模型返回 1M 窗口。

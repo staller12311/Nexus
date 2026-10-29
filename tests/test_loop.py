@@ -883,3 +883,109 @@ def test_non_approval_tool_skips_handler(tmp_path: Path) -> None:
     loop.run("随便")
     assert called == []
     storage.close()
+
+# ============================================================ 8. 上下文管理
+def test_large_write_file_arguments_are_compacted_in_requests(tmp_path: Path) -> None:
+    """大段代码已经落盘：后续请求的 assistant tool_calls 参数应压缩成占位 JSON。"""
+    (tmp_path / "workspace").mkdir(exist_ok=True)
+    session = Storage(tmp_path / "s.db").create_session("m")
+    storage = Storage(tmp_path / "s.db")
+
+    config = _approval_config(tmp_path, require=False)
+    registry = build_registry(config)
+    big_content = "const x = 1;\n" * 400  # ~5000 字符
+    arguments = json.dumps({"path": "app.js", "content": big_content})
+    provider = fake_provider(
+        [tool_result(ToolCall("c1", "write_file", arguments)), final("写好了")]
+    )
+    loop = AgentLoop.from_config(
+        config, provider, registry, storage=storage, session_id=session.id
+    )
+    loop.run("写一个 js 文件")
+
+    second = provider.requests[1]["messages"]
+    assistant = [m for m in second if m["role"] == "assistant"][0]
+    sent_arguments = assistant["tool_calls"][0]["function"]["arguments"]
+    parsed = json.loads(sent_arguments)
+    assert parsed["path"] == "app.js"
+    assert "历史中省略" in parsed["content"]
+    assert len(sent_arguments) < 300, "大段代码不应再随历史发给模型"
+    # 磁盘上的文件内容完整，只是历史请求里不再回显
+    assert (tmp_path / "workspace" / "app.js").read_text(encoding="utf-8") == big_content
+    storage.close()
+
+
+def test_history_summary_replaces_old_messages_instead_of_trimming(tmp_path: Path) -> None:
+    """超过 80% 窗口时：最旧的 10 条被压成一条摘要写进 system，而不是直接丢弃。"""
+    session = Storage(tmp_path / "s.db").create_session("m")
+    storage = Storage(tmp_path / "s.db")
+
+    history: list[dict[str, Any]] = []
+    for index in range(6):
+        history.append({"role": "user", "content": f"第 {index} 轮旧需求：" + "贪吃蛇" * 80})
+        history.append(
+            {"role": "assistant", "content": f"第 {index} 轮旧回答：" + "已经处理" * 80}
+        )
+
+    transcripts: list[str] = []
+
+    def summarizer(transcript: str) -> str:
+        transcripts.append(transcript)
+        return "用户之前要求写贪吃蛇，模型遇到 JSON 报错，最后修正了文件。"
+
+    provider = fake_provider([final("继续")])
+    loop = AgentLoop(
+        provider,
+        ToolRegistry(),
+        system_prompt="你是助手。",
+        storage=storage,
+        session_id=session.id,
+        history=history,
+        context_window=500,
+        summarizer=summarizer,
+        context_summary_trigger=0.8,
+        context_summary_messages=10,
+    )
+    loop.run("继续完善它")
+
+    assert len(transcripts) == 1
+    assert "贪吃蛇" in transcripts[0]
+    sent = provider.requests[0]["messages"]
+    assert "【历史记忆摘要】" in sent[0]["content"]
+    assert "贪吃蛇" in sent[0]["content"]
+    assert len(sent) < len(history) + 2
+    # 最近两轮必须保留
+    assert any("第 5 轮" in str(m.get("content") or "") for m in sent)
+    storage.close()
+
+
+def test_summary_failure_falls_back_to_trimming(tmp_path: Path) -> None:
+    """摘要器异常时不能崩：退回旧的按条数裁剪路径。"""
+    session = Storage(tmp_path / "s.db").create_session("m")
+    storage = Storage(tmp_path / "s.db")
+    history = [
+        {"role": "user", "content": "旧需求" * 100},
+        {"role": "assistant", "content": "旧回答" * 100},
+        {"role": "user", "content": "旧需求 2" * 100},
+        {"role": "assistant", "content": "旧回答 2" * 100},
+    ]
+
+    def broken_summarizer(transcript: str) -> str:
+        raise RuntimeError("后台摘要模型挂了")
+
+    provider = fake_provider([final("继续")])
+    loop = AgentLoop(
+        provider,
+        ToolRegistry(),
+        system_prompt="你是助手。",
+        storage=storage,
+        session_id=session.id,
+        history=history,
+        context_window=100,
+        summarizer=broken_summarizer,
+        max_history_messages=2,
+    )
+    assert loop.run("继续").content == "继续"
+    # 摘要失败 → 退回按条数裁剪（system + 最近 2 条）
+    assert len(provider.requests[0]["messages"]) <= 3
+    storage.close()

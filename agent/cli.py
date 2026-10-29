@@ -26,7 +26,7 @@ from rich.table import Table
 from rich.text import Text
 
 from .config import KNOWN_TOOLS, AppConfig, ConfigError, ModelConfig
-from .loop import AgentLoop, LoopResult
+from .loop import SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_TEMPLATE, AgentLoop, LoopResult
 from .provider import Provider, ProviderError, ToolCall
 from .registry import ERROR_PREFIX, ToolRegistry, build_registry
 from .storage import SessionRecord, Storage, StorageError
@@ -378,7 +378,25 @@ class ChatSession:
             on_tool_result=lambda call, output: print_tool_result(self.console, call, output),
             # 是否真正触发审批由 config.tools.require_approval 决定（loop 内部判断）
             approval_handler=lambda call: ask_tool_approval(self.console, call),
+            context_window=self.model.context_window,
+            summarizer=self._summarize_history,
         )
+
+    def _summarize_history(self, transcript: str) -> str | None:
+        """CLI 的历史摘要：用同一个模型做一次静默短输出调用。"""
+        result = self.provider.chat(
+            [
+                {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": SUMMARY_USER_TEMPLATE.format(transcript=transcript),
+                },
+            ],
+            temperature=0.2,
+            max_tokens=512,
+        )
+        summary = (result.content or "").strip()
+        return summary or None
 
     # ---- 操作 -----------------------------------------------------------
     @property

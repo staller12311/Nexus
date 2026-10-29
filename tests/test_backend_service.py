@@ -564,3 +564,12 @@ def test_client_error_report_is_logged(api, caplog) -> None:
     assert "前端异常 source=render" in caplog.text
     assert "Maximum update depth exceeded" in caplog.text
     assert "ApprovalCard" in caplog.text
+
+def test_custom_model_known_context_window_is_1m(api) -> None:
+    client, service, _config = api
+    service.add_custom_model("qwen-probe", "http://127.0.0.1:9/v1", "qwen3.8-flash", "sk-probe")
+    try:
+        models = {model["name"]: model for model in client.get("/api/models").json()}
+        assert models["qwen-probe"]["context_window"] == 1_000_000
+    finally:
+        service.delete_custom_model("qwen-probe")

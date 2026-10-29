@@ -33,6 +33,8 @@ __all__ = [
     "LoopResult",
     "APPROVAL_REJECTED_MESSAGE",
     "INVALID_ARGUMENTS_MESSAGE",
+    "ARGUMENT_COMPACT_TOOLS",
+    "ARGUMENT_COMPACT_THRESHOLD",
     "ToolArgumentsError",
     "trim_history",
 ]
@@ -46,6 +48,18 @@ APPROVAL_REJECTED_MESSAGE = "用户已拒绝此操作，工具未执行。"
 INVALID_ARGUMENTS_PLACEHOLDER = "{}"
 #: 本地拦截后回灌给模型的错误文本（模型看到后可在同一轮内重新生成）。
 INVALID_ARGUMENTS_MESSAGE = "参数不是合法 JSON，请重新生成（本次工具未执行）。"
+
+#: 历史上这些工具的 arguments 超过阈值后压缩成占位 JSON（大段代码已落盘，无需在历史里回显）
+ARGUMENT_COMPACT_TOOLS = frozenset({"write_file", "run_python_code"})
+ARGUMENT_COMPACT_THRESHOLD = 2000
+
+#: 历史摘要压缩：触发比例 / 每次压缩的旧消息条数 / 摘要提示词
+SUMMARY_SYSTEM_PROMPT = (
+    "你是对话记忆压缩器。把用户提供的较早对话压缩成一段不超过 200 字的中文摘要，"
+    "保留：用户目标、关键决定、创建/修改过的文件、重要错误及修复、尚未完成的事项。"
+    "只输出摘要正文，不要解释、不要 Markdown。"
+)
+SUMMARY_USER_TEMPLATE = "历史对话如下，请压缩成记忆摘要：\n\n{transcript}"
 
 
 class ToolArgumentsError(ToolError):
@@ -145,6 +159,10 @@ class AgentLoop:
         on_tool_result: Callable[[ToolCall, str], None] | None = None,
         approval_handler: Callable[[ToolCall], bool] | None = None,
         approval_required: Collection[str] = (),
+        context_window: int | None = None,
+        summarizer: Callable[[str], str | None] | None = None,
+        context_summary_trigger: float = 0.8,
+        context_summary_messages: int = 10,
         logger: logging.Logger | None = None,
     ) -> None:
         self.provider = provider
@@ -160,6 +178,17 @@ class AgentLoop:
         self.approval_required = frozenset(approval_required)
         #: 本轮被本地拦截的非法 arguments：call_id -> 错误文本
         self._invalid_arguments: dict[str, str] = {}
+        #: 模型真实上下文窗口；None 时退回旧的「按条数裁剪」行为
+        self.context_window = int(context_window) if context_window else None
+        #: 后台静默摘要器：输入一段历史对话文本，输出一句摘要（None 表示不可用）
+        self.summarizer = summarizer
+        self.context_summary_trigger = max(0.1, min(float(context_summary_trigger), 1.0))
+        self.context_summary_messages = max(2, int(context_summary_messages))
+        #: 已压缩进 system 提示词的历史摘要（多轮压缩会累加）
+        self._history_summary = ""
+        self._last_prompt_tokens = 0
+        #: 本轮摘要是否失败/为空（失败时退回按条数裁剪，避免请求体失控）
+        self._summary_failed = False
         self._logger = logger or get_logger("agent.loop")
 
         self._messages: list[dict[str, Any]] = [dict(m) for m in (history or [])]
@@ -190,6 +219,8 @@ class AgentLoop:
         on_tool_call: Callable[[ToolCall], None] | None = None,
         on_tool_result: Callable[[ToolCall, str], None] | None = None,
         approval_handler: Callable[[ToolCall], bool] | None = None,
+        context_window: int | None = None,
+        summarizer: Callable[[str], str | None] | None = None,
     ) -> "AgentLoop":
         return cls(
             provider,
@@ -207,6 +238,10 @@ class AgentLoop:
             approval_required=(
                 config.tools.approval_required if config.tools.require_approval else ()
             ),
+            context_window=context_window,
+            summarizer=summarizer,
+            context_summary_trigger=config.agent.context_summary_trigger,
+            context_summary_messages=config.agent.context_summary_messages,
         )
 
     # ---- 只读视图 -------------------------------------------------------
@@ -216,8 +251,20 @@ class AgentLoop:
         return [dict(message) for message in self._messages]
 
     def request_messages(self) -> list[dict[str, Any]]:
-        """实际会发给模型的历史（已按组裁剪）。"""
-        return trim_history(self._messages, self.max_history_messages)
+        """实际会发给模型的历史。
+
+        - 先压缩「写入文件/执行代码」这类大参数 tool_call（内容已落盘，历史只需保留调用）；
+        - 启用摘要压缩时不再按条数粗暴裁剪，由 ``_maybe_summarize_history`` 在超阈值时
+          把最旧的消息替换成 system 里的记忆摘要；未启用时退回 ``trim_history``。
+        """
+        messages = self._compact_tool_arguments(self._messages)
+        if (
+            self.context_window is not None
+            and self.summarizer is not None
+            and not self._summary_failed
+        ):
+            return messages
+        return trim_history(messages, self.max_history_messages)
 
     # ---- 主循环 ---------------------------------------------------------
     def run(self, user_input: str) -> LoopResult:
@@ -263,6 +310,8 @@ class AgentLoop:
                 }
                 return
 
+            # 上下文超过阈值时：用「摘要」替换最旧的若干轮，而不是直接砍掉
+            self._maybe_summarize_history()
             tools = self.registry.schemas() or None
             content_parts: list[str] = []
             reasoning_parts: list[str] = []
@@ -286,6 +335,8 @@ class AgentLoop:
                     finish_reason = event.get("finish_reason")
 
             run_usage = run_usage + usage
+            if usage.prompt_tokens:
+                self._last_prompt_tokens = usage.prompt_tokens
             self._record_usage(usage)
 
             content = "".join(content_parts) or None
@@ -424,6 +475,150 @@ class AgentLoop:
             "name": call.name,
             "content": output,
         }
+
+    # ---- 上下文管理 -----------------------------------------------------
+    @staticmethod
+    def _compact_tool_arguments(
+        messages: Sequence[Mapping[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """把历史上超大参数的 tool_call 替换成占位 JSON。
+
+        大段代码已经写入文件/已执行，历史里没有必要再回显全文；
+        保留 path/说明即可（仍满足上游「arguments 必须是合法 JSON」的要求）。
+        """
+        compacted: list[dict[str, Any]] = []
+        for message in messages:
+            if message.get("role") != "assistant" or not message.get("tool_calls"):
+                compacted.append(dict(message))
+                continue
+
+            calls: list[dict[str, Any]] = []
+            for raw in message["tool_calls"]:
+                call = dict(raw)
+                function = dict(call.get("function") or {})
+                name = function.get("name")
+                arguments = function.get("arguments")
+                if (
+                    name in ARGUMENT_COMPACT_TOOLS
+                    and isinstance(arguments, str)
+                    and len(arguments) >= ARGUMENT_COMPACT_THRESHOLD
+                ):
+                    path = ""
+                    try:
+                        parsed = json.loads(arguments)
+                        if isinstance(parsed, dict):
+                            path = str(parsed.get("path") or "")
+                    except (TypeError, ValueError):
+                        pass
+                    if name == "write_file":
+                        placeholder = {
+                            "path": path,
+                            "content": f"（{len(arguments)} 字符的代码已写入文件，历史中省略）",
+                        }
+                    else:
+                        placeholder = {
+                            "code": f"（{len(arguments)} 字符的代码已执行，历史中省略）"
+                        }
+                    function["arguments"] = json.dumps(placeholder, ensure_ascii=False)
+                call["function"] = function
+                calls.append(call)
+            message = dict(message)
+            message["tool_calls"] = calls
+            compacted.append(message)
+        return compacted
+
+    def _estimate_context_tokens(self) -> int:
+        """粗估当前请求的 token 数：优先用上一轮真实 prompt_tokens，其次按字符数估算。"""
+        if self._last_prompt_tokens:
+            return self._last_prompt_tokens
+        chars = 0
+        for message in self._messages:
+            chars += len(str(message.get("content") or ""))
+            for call in message.get("tool_calls") or []:
+                function = call.get("function") or {}
+                chars += len(str(function.get("arguments") or "")) + len(
+                    str(function.get("name") or "")
+                )
+        # 中英文混合按 2.5 字符/token 保守估算
+        return int(chars / 2.5)
+
+    def _maybe_summarize_history(self) -> None:
+        """上下文达到窗口的 ``trigger`` 比例时，把最旧的若干轮压缩成一条摘要。
+
+        摘要写入 system 提示词（保持 OpenAI 消息序列合法），原消息从内存历史移除；
+        DB 里的完整历史不动（前端回放仍是全文）。摘要失败时静默跳过，下一轮再试。
+        """
+        if self.context_window is None or self.summarizer is None:
+            return
+        self._summary_failed = False
+        estimated = self._estimate_context_tokens()
+        if estimated < self.context_window * self.context_summary_trigger:
+            return
+
+        pinned, groups = _split_groups(self._messages)
+        # 至少给最近两轮留位置；最多压缩 context_summary_messages 条
+        removable = max(0, len(groups) - 2)
+        if removable <= 0:
+            return
+        take = min(self.context_summary_messages, removable)
+        removed_groups = groups[:take]
+        removed = [message for group in removed_groups for message in group]
+
+        transcript = self._format_history_for_summary(removed)
+        try:
+            summary = self.summarizer(transcript)
+        except Exception as exc:  # noqa: BLE001 - 摘要失败不能让主对话崩溃
+            self._summary_failed = True
+            self._logger.warning("历史摘要失败，本轮退回按条数裁剪：%s", exc)
+            return
+        summary = (summary or "").strip()
+        if not summary:
+            self._summary_failed = True
+            return
+
+        self._history_summary = (
+            f"{self._history_summary}；{summary}" if self._history_summary else summary
+        )
+        block = f"\n\n【历史记忆摘要】{self._history_summary}"
+        if pinned:
+            base = str(pinned[0].get("content") or "")
+            # 避免每次摘要都重复追加旧摘要
+            if "【历史记忆摘要】" in base:
+                base = base.split("\n\n【历史记忆摘要】", 1)[0]
+            pinned[0] = {**pinned[0], "content": f"{base}{block}"}
+        else:
+            pinned = [{"role": "system", "content": f"【历史记忆摘要】{self._history_summary}"}]
+
+        self._messages = pinned + [
+            message for group in groups[take:] for message in group
+        ]
+        self._last_prompt_tokens = 0
+        self._logger.info(
+            "上下文 %d tokens ≥ %.0f%% 窗口，已把 %d 条旧消息压缩成摘要（剩余 %d 条）",
+            estimated,
+            self.context_summary_trigger * 100,
+            len(removed),
+            len(self._messages),
+        )
+
+    @staticmethod
+    def _format_history_for_summary(messages: Sequence[Mapping[str, Any]]) -> str:
+        lines: list[str] = []
+        for message in messages:
+            role = message.get("role")
+            content = str(message.get("content") or "").strip()
+            calls = message.get("tool_calls") or []
+            if role == "assistant" and calls:
+                names = ", ".join(
+                    str((call.get("function") or {}).get("name") or "?") for call in calls
+                )
+                lines.append(f"assistant 调用工具 [{names}]：{content[:300]}")
+            elif role == "tool":
+                name = str(message.get("name") or "tool")
+                lines.append(f"tool({name}) 返回：{content[:400]}")
+            else:
+                lines.append(f"{role}: {content[:600]}")
+        return "\n".join(lines)
 
     # ---- 工具执行 -------------------------------------------------------
     def _execute_tool_calls(self, tool_calls: Sequence[ToolCall]) -> None:

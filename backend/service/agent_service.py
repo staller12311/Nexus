@@ -21,7 +21,7 @@ from typing import Any, Callable, Iterator, Sequence
 
 from agent.config import KNOWN_TOOLS, AppConfig, ConfigError, ExtraWorkspace, load_config
 from agent.logging_setup import setup_logging
-from agent.loop import AgentLoop
+from agent.loop import SUMMARY_SYSTEM_PROMPT, SUMMARY_USER_TEMPLATE, AgentLoop
 from agent.provider import Provider, ToolCall, Usage
 from agent.registry import ToolRegistry, build_registry
 from agent.tools.files import Mount
@@ -53,8 +53,17 @@ _TITLE_PREFIX = re.compile(r"^(标题|topic|title)\s*[:：]?\s*", re.IGNORECASE)
 logger = logging.getLogger("agent.web")
 
 DEFAULT_SESSION_LIMIT = 20
-#: 自定义模型没有 context_window 字段时的保守默认值（OpenAI 兼容端点的常见下限）
-DEFAULT_CONTEXT_WINDOW = 32768
+#: 自定义模型没有显式上下文配置时的保守默认值（128K）
+DEFAULT_CONTEXT_WINDOW = 131072
+#: 官方文档确认 1M 上下文的模型（DeepSeek-V4 系列 / Qwen3.8-Flash 等）
+_ONE_MILLION_PREFIXES = (
+    "deepseek-v4",
+    "deepseek-chat",
+    "deepseek-reasoner",
+    "qwen3.8",
+    "qwen3.7",
+    "qwen-turbo",
+)
 #: 需要显式配置白名单、默认禁用的工具（与 README 第 14/16 条一致）
 DEFAULT_DISABLED_TOOLS = frozenset({"run_shell", "http_get"})
 #: 自动起标题用的提示词（第 45 条）
@@ -262,7 +271,7 @@ class AgentService:
                     api_key_env="(自定义)",
                     key_set=bool(custom.api_key.strip()),
                     is_default=False,
-                    context_window=DEFAULT_CONTEXT_WINDOW,
+                    context_window=self.context_window_for(custom.name),
                     is_custom=True,
                     has_key=bool(custom.api_key.strip()),
                     api_key_masked=custom.masked_key,
@@ -290,6 +299,37 @@ class AgentService:
         if not self.custom_models.delete(target.name):
             raise CustomModelError(f"删除失败：{target.name}")
         return {"deleted": True, "name": target.name, "referenced_sessions": referenced}
+
+    def context_window_for(self, model_name: str) -> int:
+        """返回模型的真实上下文窗口（内置读 config；自定义按已知模型映射）。"""
+        model_config = self.config.models.get(model_name)
+        if model_config is not None:
+            return int(model_config.context_window)
+        custom = self.custom_models.get(model_name)
+        model_id = (custom.model if custom else model_name).lower()
+        if any(prefix in model_id for prefix in _ONE_MILLION_PREFIXES):
+            return 1_000_000
+        return DEFAULT_CONTEXT_WINDOW
+
+    def _make_summarizer(self, provider: Provider):
+        """构造「后台静默摘要器」：用同一个模型把旧对话压成一句话（短输出、低温度）。"""
+
+        def summarize(transcript: str) -> str | None:
+            result = provider.chat(
+                [
+                    {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": SUMMARY_USER_TEMPLATE.format(transcript=transcript),
+                    },
+                ],
+                temperature=0.2,
+                max_tokens=512,
+            )
+            summary = (result.content or "").strip()
+            return summary or None
+
+        return summarize
 
     def has_model(self, name: str) -> bool:
         return name in self.config.models or self.custom_models.get(name) is not None
@@ -599,6 +639,8 @@ class AgentService:
                     on_tool_call=on_tool_call,
                     on_tool_result=on_tool_result,
                     approval_handler=approval_handler,
+                    context_window=self.context_window_for(model_name),
+                    summarizer=self._make_summarizer(provider),
                 )
                 result = loop.run(text)
             finally:
@@ -692,6 +734,8 @@ class AgentService:
                     on_tool_call=on_tool_call,
                     on_tool_result=on_tool_result,
                     approval_handler=approval_handler,
+                    context_window=self.context_window_for(model_name),
+                    summarizer=self._make_summarizer(provider),
                 )
                 for event in loop.run_stream(text):
                     kind = event.get("type")

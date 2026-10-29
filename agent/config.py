@@ -135,6 +135,10 @@ class AgentConfig(_StrictModel):
     extra_workspaces: list[ExtraWorkspace] = Field(default_factory=list)
     max_tool_rounds: int = Field(default=8, ge=1)
     max_history_messages: int = Field(default=40, ge=1)
+    #: 上下文占用达到该比例时触发「历史摘要压缩」（0–1），替代粗暴裁剪
+    context_summary_trigger: float = Field(default=0.8, gt=0, le=1)
+    #: 每次摘要压缩最旧的多少条消息
+    context_summary_messages: int = Field(default=10, ge=2)
     request_timeout: float = Field(default=60, gt=0)
     max_retries: int = Field(default=3, ge=0)
 

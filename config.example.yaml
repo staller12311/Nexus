@@ -13,7 +13,8 @@ models:
     api_key_env: DEEPSEEK_API_KEY
     temperature: 0.7
     max_tokens: 4096           # 思维链也算在 completion 里：写长代码建议调到 8192
-    context_window: 65536
+    # DeepSeek 官方文档（api-docs.deepseek.com/zh-cn/quick_start/pricing）：上下文 1M
+    context_window: 1000000
   ollama:
     base_url: http://localhost:11434/v1
     model: qwen2.5:7b
@@ -34,7 +35,9 @@ agent:
   #     writable: false
   extra_workspaces: []
   max_tool_rounds: 15           # 工具调用循环上限（复杂页面/长任务留足重试空间）
-  max_history_messages: 40      # 送进模型的历史消息上限
+  max_history_messages: 40      # 未启用摘要时的兜底裁剪上限（启用摘要后不再按条数砍历史）
+  context_summary_trigger: 0.8  # 上下文占用 ≥80% 时触发历史摘要压缩
+  context_summary_messages: 10  # 每次摘要压缩最旧的 10 条消息
   request_timeout: 60
   max_retries: 3
 

@@ -45,7 +45,7 @@ def test_example_config_is_valid() -> None:
     assert isinstance(config, AppConfig)
     assert config.default_model == "deepseek"
     assert set(config.models) == {"deepseek", "ollama"}
-    assert config.models["deepseek"].context_window == 65536
+    assert config.models["deepseek"].context_window == 1000000  # 官方文档：1M
     assert config.models["ollama"].base_url == "http://localhost:11434/v1"
     assert config.tools.enabled == [
         "read_file",
@@ -71,6 +71,8 @@ def test_example_config_is_valid() -> None:
     assert config.tools.python_exec.timeout == 10
     assert config.tools.python_exec.max_output_chars == 8000
     assert config.agent.max_tool_rounds == 15
+    assert config.agent.context_summary_trigger == 0.8
+    assert config.agent.context_summary_messages == 10
     assert config.logging.level == "INFO"
 
 
@@ -92,6 +94,8 @@ def test_example_config_keeps_field_names() -> None:
         "extra_workspaces",
         "max_tool_rounds",
         "max_history_messages",
+        "context_summary_trigger",
+        "context_summary_messages",
         "request_timeout",
         "max_retries",
     }

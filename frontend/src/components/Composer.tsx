@@ -238,10 +238,18 @@ export function Composer() {
                   </>
                 )}
               </span>
-              <span className="flex shrink-0 items-center gap-1" title="当前会话上下文占用率（约值）">
+              <span className="flex shrink-0 items-center gap-1" title="当前会话上下文占用率（约值，分母为模型真实 context_window）">
                 <Brain className="h-3 w-3 text-gray-400" />
                 当前上下文{' '}
-                <span className="text-gray-600">
+                <span
+                  className={
+                    contextUsage !== null && contextUsage >= 0.95
+                      ? 'text-rose-600'
+                      : contextUsage !== null && contextUsage >= 0.8
+                        ? 'text-amber-600'
+                        : 'text-gray-600'
+                  }
+                >
                   {contextUsage !== null ? formatRate(contextUsage, 0) : '—'}
                 </span>
               </span>
