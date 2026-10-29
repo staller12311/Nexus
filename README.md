@@ -1,18 +1,19 @@
-# Nexus 智枢
+<div align="center">
 
-<div>
+# Nexus 智枢
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 
+**把大模型变成真正的生产力工具：支持 1M 上下文、本地知识库与代码沙箱的私有化 Agent 中台。**
+
+<img src="./assets/ui-chat.png" alt="Nexus 智枢 - 对话与工具调用界面" width="800" />
+
+<img src="./assets/ui-approval.png" alt="Nexus 智枢 - 审批卡片与代码沙箱" width="800" />
+
 </div>
-
-**Nexus 智枢 - 具备企业级安全沙箱的私有化 AI Agent 中台。**
-
-本地优先、可审计、模型可热插拔：自研 Agent Loop + 真流式 SSE + 工具沙箱 + Human-in-the-loop 审批，
-把「会写代码、会调工具」的智能体装进你自己的电脑 / 私有服务器。数据不出本机，模型随时可换。
 
 ## ✨ 核心特性
 
@@ -24,6 +25,112 @@
 - ✅ **协议级健壮性**：非法 `function.arguments` 本地拦截、工具异常回灌、上游 400 防御
 - ✅ **可观测与成本**：Token/缓存命中率/节省估算、结构化日志与密钥脱敏、会话级统计
 - ✅ **一键启动 / 一键部署**：Windows `start.bat`；Docker Compose 一条命令跑通
+
+## 🏗️ 系统架构
+
+### 总体架构
+
+```mermaid
+graph TD
+    User((用户)) -->|发消息 / 上传文档| FE[React 19 前端]
+    FE -->|SSE 流式接收| API[FastAPI 网关]
+    
+    subgraph Agent Core (自研智能体核心)
+        API -->|推入任务| Loop[Agent Loop 编排器]
+        Loop -->|1. 请求并解析流| Provider[Provider 适配层]
+        Provider -->|2. 识别 Reasoning 与 Text| Loop
+        Loop -->|3. 流式拼接 Tool Calls| Tools[工具执行器]
+        Tools -->|4. 读取 workspace & @libs| FS[(本地文件系统)]
+        Tools -->|5. 执行 Python 沙箱| Code[run_python_code]
+        Tools -->|6. 结果回灌| Loop
+    end
+    
+    subgraph Model Layer (多模型底座)
+        Provider -.->|直连| DS[DeepSeek-V4 1M 上下文]
+        Provider -.->|热插拔| ThirdParty[千问 / Moonshot / 本地 Ollama]
+    end
+    
+    Loop -->|7. 双流事件推送 + 审批请求| API
+    API -->|SSE 打字机 & 审批卡| FE
+```
+
+### 真流式与工具调用时序
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant FE as 前端(React)
+    participant BE as 后端(FastAPI)
+    participant Agent as 智能体核心
+    participant LLM as 大模型
+
+    U->>FE: "用 @libs 读一下依赖库，重构当前目录的 main.py"
+    FE->>BE: POST /api/chat/stream
+    BE->>Agent: run_stream()
+    Agent->>LLM: 发起 stream=True 请求
+    
+    LLM-->>Agent: 碎片 1: reasoning_content="我需要先读取共享库"
+    Agent-->>BE: SSE: reasoning_delta
+    BE-->>FE: 渲染灰色折叠面板(思考中...)
+    
+    LLM-->>Agent: 碎片 2: tool_calls=[read_file, args: {"pa"]
+    LLM-->>Agent: 碎片 3: tool_calls=[{"args: "th":"@libs/app.py"...}]
+    Note over Agent: 拼装完整 JSON 参数
+    Agent->>Agent: 执行 read_file (只读沙箱校验通过)
+    Agent-->>BE: SSE: tool_call_end
+    BE-->>FE: 工具卡片变绿 (成功读取)
+    
+    LLM-->>Agent: 碎片 4: content="我需要修改 main.py"
+    LLM-->>Agent: 碎片 5: tool_calls=[write_file, args: {...}]
+    Note over Agent: 检测到 write_file 需要审批
+    Agent-->>BE: SSE: approval_required
+    BE-->>FE: 渲染黄色审批卡片 (展示代码预览)
+    
+    U->>FE: 点击「同意执行」
+    FE->>BE: POST /api/chat/approve
+    BE->>Agent: 唤醒 ApprovalGate (跨线程恢复)
+    Agent->>Agent: 执行 write_file 写入代码
+    Agent-->>BE: SSE: tool_call_end
+    BE-->>FE: 工具卡片变绿 (成功写入)
+    
+    LLM-->>Agent: 碎片 6: content="重构完成，已更新依赖"
+    Agent-->>BE: SSE: text_delta
+    BE-->>FE: 打字机输出正文
+    LLM-->>Agent: [DONE] 流结束
+    Agent-->>BE: SSE: message_end
+```
+
+## 🎯 为什么选择 Nexus 智枢
+
+- ❌ **市面上的“套壳”方案**：数据直连公网、聊天记录与代码不可控；只能聊天，无法真正执行本地代码；没有沙箱，模型可以随意读写系统文件；危险操作无确认。
+- ✅ **Nexus 智枢**：本地运行保障隐私、数据与 Key 都留在自己机器；手写 Agent Loop，文件 / 命令 / Python 工具链完整可执行；workspace realpath 沙箱 + `@mount` 多根目录挂载；危险操作人工审批，拒绝 / 超时 / 断连都有安全收敛。
+
+## 📁 项目结构
+
+```text
+nexus-zhishu/
+├── agent/                    # 自研 Agent 内核（零 Agent 框架依赖）
+│   ├── loop.py               # 主循环：流式解析、工具执行、上下文压缩/摘要
+│   ├── provider.py           # OpenAI 兼容 Provider、usage、重试与错误分类
+│   ├── registry.py           # 工具注册表与 JSON Schema
+│   ├── storage.py            # SQLite 会话 / 消息持久化
+│   ├── config.py             # pydantic 严格配置校验
+│   └── tools/                # 文件、shell、HTTP、时间、run_python_code
+├── backend/                  # FastAPI + SSE 网关
+│   ├── api/                  # 路由与请求/响应 Schema
+│   └── service/              # AgentService、审批闸门、知识库、工作区
+├── frontend/                 # React 19 + Vite + Tailwind
+│   └── src/                  # components / store / lib / api / 测试
+├── tests/                    # pytest：主循环、工具安全、审批、Web API
+├── docker/                   # Nginx 配置与后端容器入口
+├── assets/                   # README 截图（ui-chat / ui-approval）
+├── Dockerfile                # 多阶段：Node 构建 → Python 运行时 → Nginx
+├── docker-compose.yml        # backend + web，挂载 data / workspace
+├── config.example.yaml       # 配置模板（模型、沙箱、审批、上下文）
+├── start.bat                 # Windows 一键启动（前后端 + 自动开浏览器）
+├── 输入.md                    # 技术白皮书（架构、突破、安全边界）
+└── README.md
+```
 
 ## ⚡ 快速开始
 
@@ -318,6 +425,9 @@ python -m agent tools list      # 全部工具及启用状态（含默认禁用�
 python -m agent config check    # 打印将要使用的配置；密钥缺失时退非 0 且错误走 stderr
 ```
 
+<details>
+<summary><b>🧪 测试与质量</b>（点击展开）</summary>
+
 ## 测试
 
 ```bash
@@ -332,6 +442,11 @@ python -m agent config check    # 打印将要使用的配置；密钥缺失时�
 本轮新增上下文管理 4 条（工具参数压缩、80% 摘要替换、摘要失败回退、1M 窗口识别），
 以及此前的非法 JSON 本地拦截 / 审批修正，总数从 321 增至 328。
 前端：37 个测试文件 / 199 passed + 6 skipped（含审批卡片、审批+流式稳定性、错误边界、模型菜单、状态栏用例）。
+
+</details>
+
+<details>
+<summary><b>🧰 如何新增一个工具（扩展开发）</b>（点击展开）</summary>
 
 ## 如何新增一个工具
 
@@ -435,6 +550,8 @@ $ python -m agent run 现在几点了
 不想看到它就改一行：把 `get_time` 从 `config.yaml` 的 `tools.enabled` 里删掉即可，
 代码留着不会被加载、也不会出现在工具列表里。
 
+</details>
+
 ## Web 界面（FastAPI + React）
 
 CLI 之外的可选界面。**`agent/` 一行未改**：后端只调用现有 `AgentService` 封装，
@@ -467,6 +584,9 @@ cd frontend && npm run dev                            # http://localhost:5173
 前置条件：Node.js 在 PATH、`frontend/node_modules` 已安装（`cd frontend && npm install`）、
 `D:\python3.11\python.exe` 存在（不存在则退回 `.venv` Python，此时写外部工作区可能受完整性级别限制）。
 日志：`data/backend.log`、`data/backend.err.log`、`data/frontend.log`、`data/frontend.err.log`。
+
+<details>
+<summary><b>📡 REST 端点</b>（点击展开）</summary>
 
 ### REST 端点
 
@@ -508,6 +628,11 @@ cd frontend && npm run dev                            # http://localhost:5173
 运行时也可用 `POST /api/config/workspace` 的 `extras` 覆盖。模型用 `@name/路径` 访问挂载，
 普通相对路径只相对主工作区解析；只读挂载不能写入（第 59 条）。
 
+</details>
+
+<details>
+<summary><b>📨 SSE 事件协议</b>（点击展开）</summary>
+
 ### SSE 事件协议
 
 每帧都是 `data: <JSON>\n\n`：
@@ -525,6 +650,8 @@ cd frontend && npm run dev                            # http://localhost:5173
 
 `arguments` 是模型返回的**原始 JSON 字符串**（后端不解析再序列化，与第 21 条一致）；
 前端自己格式化显示。
+
+</details>
 
 ### 历史消息怎么渲染（对齐第 21 条）
 
@@ -660,6 +787,9 @@ cd frontend && npm run test
 4. `vitest.config.ts` 里 `pool: 'threads'`：默认的 `forks` 池要 spawn 子进程，同样 EPERM；
    `threads` 用 worker_threads，不 spawn。
 
+<details>
+<summary><b>✅ 交付清单</b>（点击展开）</summary>
+
 ## 交付清单
 
 验收标准第 7 条要求 README 覆盖安装、配置、用法与扩展方式，逐项对照：
@@ -701,10 +831,20 @@ Web 界面（第一阶段 CLI 之外的增量交付）：
 - [x] **上下文记忆管理**：大代码 tool_call 历史压缩 + 1M 窗口识别 + 超 80% 用后台摘要
   替换最旧 10 条消息（第 68 条）
 
+</details>
+
+<details>
+<summary><b>🧭 已知待办</b>（点击展开）</summary>
+
 ## 已知待办
 
 - `agent/cli.py::render_tools_table()` 的工具说明表与 `registry.py` 的 `ToolSpec.description` 是两份
   （README 第 32 条），新增工具要改两处。
+
+</details>
+
+<details>
+<summary><b>🧱 已清偿的技术债</b>（点击展开）</summary>
 
 ## 已清偿的技术债
 
@@ -716,6 +856,11 @@ Web 界面（第一阶段 CLI 之外的增量交付）：
 - **`GET /api/sessions` 不再全量扫消息**：改用一条只读 SQL 取每个会话第一条 user 消息，
   命中现有索引 `idx_messages_session_seq`（第 41 条）。15k 消息的库上实测
   117.9ms → 24.3ms（服务层），HTTP 往返 59ms。
+
+</details>
+
+<details>
+<summary><b>📚 设计决策（68 条）</b>（点击展开）</summary>
 
 ## 设计决策
 
@@ -2099,3 +2244,6 @@ src/components/__init__.py
 
 **验证**：`tests/test_loop.py` 覆盖参数压缩、摘要替换与最近两轮保留、摘要失败回退；
 `tests/test_backend_service.py` 覆盖 qwen3.8-flash 自定义模型返回 1M 窗口。
+
+</details>
+
