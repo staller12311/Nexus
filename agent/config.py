@@ -44,13 +44,14 @@ KNOWN_TOOLS = (
     "move_path",
     "list_dir",
     "run_shell",
+    "run_python_code",
     "http_get",
     "get_time",
 )
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 
-#: 默认需要人工审批的工具（危险的文件写操作；run_python_code 在引入后也加入）
-DEFAULT_APPROVAL_TOOLS = ("write_file", "delete_path", "move_path")
+#: 默认需要人工审批的工具（危险的文件写操作 + 任意代码执行；run_python_code 在引入后加入）
+DEFAULT_APPROVAL_TOOLS = ("write_file", "delete_path", "move_path", "run_python_code")
 
 
 class ConfigError(Exception):
@@ -165,6 +166,19 @@ class HttpGetConfig(_StrictModel):
     allowed_domains: list[str] = Field(default_factory=list)
 
 
+class PythonExecConfig(_StrictModel):
+    """run_python_code 的执行上限。
+
+    工具本身默认禁用（``tools.enabled`` 不含它）、默认需要人工审批
+    （``tools.approval_required`` 含它），这两项与这里的数值无关。
+    """
+
+    #: 单次执行超时（秒）；超时后子进程被终止，本次调用返回 ToolError
+    timeout: float = Field(default=10, gt=0)
+    #: stdout / stderr 各自最多保留的字符数，超出部分截断并注明省略量
+    max_output_chars: int = Field(default=8000, ge=100)
+
+
 class ToolsConfig(_StrictModel):
     enabled: list[str] = Field(
         default_factory=lambda: ["read_file", "write_file", "list_dir", "get_time"]
@@ -179,6 +193,7 @@ class ToolsConfig(_StrictModel):
     approval_timeout: float = Field(default=300, gt=0)
     run_shell: RunShellConfig = Field(default_factory=RunShellConfig)
     http_get: HttpGetConfig = Field(default_factory=HttpGetConfig)
+    python_exec: PythonExecConfig = Field(default_factory=PythonExecConfig)
 
     @field_validator("enabled")
     @classmethod

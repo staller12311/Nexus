@@ -2,6 +2,7 @@
 
 - ``files.py``：read_file / write_file / list_dir（受 workspace 约束）
 - ``shell.py``：run_shell（默认禁用，命令白名单只接受 PATH 中的真实可执行文件）
+- ``python_exec.py``：run_python_code（默认禁用 + 人工审批；任意代码执行，非 OS 级隔离）
 - ``http.py``：http_get（默认禁用，域名白名单 + 重定向校验）
 - ``time.py``：get_time（示例工具，演示「新增一个工具」的完整步骤）
 
@@ -28,6 +29,7 @@ from .files import (  # noqa: E402
     write_file,
 )
 from .http import http_get  # noqa: E402
+from .python_exec import run_python_code  # noqa: E402
 from .shell import run_shell  # noqa: E402
 from .time import get_time  # noqa: E402
 
@@ -43,6 +45,7 @@ __all__ = [
     "http_get",
     "list_dir",
     "read_file",
+    "run_python_code",
     "run_shell",
     "write_file",
 ]

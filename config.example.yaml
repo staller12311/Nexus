@@ -40,15 +40,20 @@ agent:
 
 tools:
   # 可选项：read_file, write_file, create_dir, delete_path, move_path, list_dir,
-  #         get_time, run_shell, http_get
-  # run_shell / http_get 默认不启用，需自行配置白名单后再加入本列表。
+  #         get_time, run_shell, run_python_code, http_get
+  # run_shell / http_get / run_python_code 默认不启用，需按需开启：
+  #   run_shell → 先配白名单
+  #   http_get  → 先配域名白名单
+  #   run_python_code → 任意代码执行，确认下面的风险提示后加入 enabled
   # get_time 是示例工具（README「如何新增一个工具」的模板）：无副作用，不需要配置；
   # 不想要就从本列表里删掉它，代码留着也无害。
   enabled: [read_file, write_file, create_dir, delete_path, move_path, list_dir, get_time]
   # 危险工具调用前挂起，等人工确认（Web 端黄色审批卡片 / CLI 终端 y/N）。
   # 默认关闭，避免"复制配置直接跑批量写入"；需要时改成 true。
   require_approval: false
-  approval_required: [write_file, delete_path, move_path]
+  # 即使 require_approval=false，这里也必须保留 run_python_code：一旦有人把
+  # require_approval 打开，任意代码执行不应漏掉审批（也可自行加别的工具）。
+  approval_required: [write_file, delete_path, move_path, run_python_code]
   approval_timeout: 300          # 秒；超时/页面关闭都按「拒绝」处理
   run_shell:
     # 只能填 PATH 中真实存在的可执行文件（如 git、python、rg）。
@@ -56,6 +61,14 @@ tools:
     # 我们用 shell=False 直接执行，这些名字一律 FileNotFoundError，不要填。
     # 空白名单 = 什么都跑不了（默认）。
     allowed_commands: []
+  python_exec:
+    # run_python_code：在 workspace 内执行任意 Python 代码（动态代码，非 OS 级隔离）。
+    # 风险：代码以当前后端/CLI 进程的权限运行，能读写该权限触达的文件、访问网络；
+    # 临时脚本写在主工作区 .agent_tmp/ 下、执行完即删，但代码本身的副作用不受限。
+    # 默认关闭。确认风险后，把 run_python_code 加入上面的 enabled 才可调用；
+    # 建议同时把 require_approval 设为 true（approval_required 已含该工具）。
+    timeout: 10                  # 单次执行上限（秒），超时子进程被终止
+    max_output_chars: 8000       # stdout / stderr 各自最大字符数，超出截断并注明省略量
   http_get:
     # 空白名单 = 不允许访问任何域名（默认）。命中规则：完全相同或其子域。
     allowed_domains: []

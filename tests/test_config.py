@@ -57,6 +57,11 @@ def test_example_config_is_valid() -> None:
         "get_time",
     ]
     assert "http_get" not in config.tools.enabled
+    # 任意代码执行工具默认关闭（config.example.yaml 只在 approval_required 里登记它）
+    assert "run_python_code" not in config.tools.enabled
+    assert "run_python_code" in config.tools.approval_required
+    assert config.tools.python_exec.timeout == 10
+    assert config.tools.python_exec.max_output_chars == 8000
     assert config.agent.max_tool_rounds == 8
     assert config.logging.level == "INFO"
 
@@ -88,6 +93,7 @@ def test_example_config_keeps_field_names() -> None:
         "approval_required",
         "approval_timeout",
         "run_shell",
+        "python_exec",
         "http_get",
     }
     assert set(raw["storage"]) == {"db_path"}
@@ -227,12 +233,16 @@ def test_duplicate_tool_is_rejected() -> None:
 
 
 def test_run_shell_allowlist_defaults_to_empty() -> None:
-    """run_shell 白名单默认必须为空：开箱即安全。"""
+    """run_shell 白名单默认必须为空：开箱即安全；代码执行工具默认关闭 + 需要审批。"""
     config = build_config(_minimal_config())
     assert config.tools.run_shell.allowed_commands == []
     assert config.tools.http_get.allowed_domains == []
     assert "run_shell" not in config.tools.enabled
     assert "http_get" not in config.tools.enabled
+    assert "run_python_code" not in config.tools.enabled
+    assert "run_python_code" in config.tools.approval_required
+    assert config.tools.python_exec.timeout == 10
+    assert config.tools.python_exec.max_output_chars == 8000
 
 
 def test_example_config_has_empty_allowlists() -> None:

@@ -30,9 +30,11 @@ from .tools import (
     http_get,
     list_dir,
     read_file,
+    run_python_code,
     run_shell,
     write_file,
 )
+from .tools.python_exec import TEMP_DIR_NAME
 
 __all__ = ["ToolRegistry", "ToolSpec", "build_registry"]
 
@@ -93,6 +95,25 @@ def _object_schema(
         "required": list(required),
         "additionalProperties": False,
     }
+
+
+def _make_python_exec_handler(
+    workspace: Workspace,
+    *,
+    default_timeout: float,
+    max_output_chars: int,
+) -> Callable[..., str]:
+    """把配置里的默认超时/截断上限绑进 handler；模型显式给了 ``timeout`` 就按它的来。"""
+
+    def handler(code: str, timeout: float | None = None) -> str:
+        return run_python_code(
+            workspace,
+            code,
+            timeout=default_timeout if timeout is None else timeout,
+            max_output_chars=max_output_chars,
+        )
+
+    return handler
 
 
 class ToolRegistry:
@@ -396,6 +417,40 @@ def build_registry(config: AppConfig, logger: logging.Logger | None = None) -> T
                 run_shell,
                 workspace.root,
                 allowed_commands=config.tools.run_shell.allowed_commands,
+            ),
+        ),
+        "run_python_code": lambda: ToolSpec(
+            name="run_python_code",
+            description=(
+                "在 workspace 内执行一段任意 Python 代码并返回其输出。"
+                "**这不是 OS 级隔离**：代码以当前后端进程的权限运行，能读写该权限触达的文件、"
+                "访问网络，请只在用户明确要求时使用，并如实说明潜在副作用。"
+                f"代码会写到主工作区 {TEMP_DIR_NAME}/ 下的临时文件后执行、用完即删；"
+                "子进程工作目录固定为工作区根；"
+                f"默认超时 {config.tools.python_exec.timeout:g}s，"
+                f"stdout / stderr 各截断到 {config.tools.python_exec.max_output_chars} 字符"
+                "（截断处会注明省略量）；只读挂载不能放临时文件。"
+            ),
+            parameters=_object_schema(
+                {
+                    "code": {
+                        "type": "string",
+                        "description": "要执行的完整 Python 代码（≤20KB）；用 print 输出结果",
+                    },
+                    "timeout": {
+                        "type": "number",
+                        "description": (
+                            "可选，本次执行的超时秒数；省略则用默认值 "
+                            f"{config.tools.python_exec.timeout:g}s"
+                        ),
+                    },
+                },
+                ["code"],
+            ),
+            handler=_make_python_exec_handler(
+                workspace,
+                default_timeout=config.tools.python_exec.timeout,
+                max_output_chars=config.tools.python_exec.max_output_chars,
             ),
         ),
         "http_get": lambda: ToolSpec(
