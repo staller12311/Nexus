@@ -11,26 +11,9 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 
-<p><img src="./assets/ui-chat.png" alt="Nexus 智枢 - 对话与工具调用界面" width="800" /></p>
-
-<p><img src="./assets/ui-approval.png" alt="Nexus 智枢 - 审批卡片与代码沙箱" width="800" /></p>
-
 </div>
 
-## 核心特性
-
-- ✅ **自研 Agent Loop**：推理/正文双通道流式解析，`tool_calls` 碎片按 index 拼装，不依赖任何 Agent 框架
-- ✅ **多模型热插拔**：任意 OpenAI 兼容端点（DeepSeek / 千问 / Moonshot / 智谱 / Ollama / vLLM），一个 YAML 搞定
-- ✅ **真·流式 Web 体验**：SSE 打字机、思考链折叠、工具卡实时状态、React 19 + Zustand
-- ✅ **企业级安全沙箱**：workspace realpath 越界校验、`@mount` 只读挂载、命令/域名白名单、危险工具审批闸门
-- ✅ **长上下文记忆**：1M 窗口校准 + 大参数历史压缩 + 80% 自动摘要（不再粗暴砍历史）
-- ✅ **协议级健壮性**：非法 `function.arguments` 本地拦截、工具异常回灌、上游 400 防御
-- ✅ **可观测与成本**：Token/缓存命中率/节省估算、结构化日志与密钥脱敏、会话级统计
-- ✅ **一键启动 / 一键部署**：Windows `start.bat`；Docker Compose 一条命令跑通
-
 ## 系统架构
-
-### 总体架构
 
 ```mermaid
 graph TD
@@ -102,10 +85,33 @@ sequenceDiagram
     Agent-->>BE: SSE: message_end
 ```
 
-## 为什么选择 Nexus 智枢
+## 核心特性
 
-- ❌ **市面上的“套壳”方案**：数据直连公网、聊天记录与代码不可控；只能聊天，无法真正执行本地代码；没有沙箱，模型可以随意读写系统文件；危险操作无确认。
-- ✅ **Nexus 智枢**：本地运行保障隐私、数据与 Key 都留在自己机器；手写 Agent Loop，文件 / 命令 / Python 工具链完整可执行；workspace realpath 沙箱 + `@mount` 多根目录挂载；危险操作人工审批，拒绝 / 超时 / 断连都有安全收敛。
+- ✅ **自研 Agent Loop**：推理/正文双通道流式解析，`tool_calls` 碎片按 index 拼装，不依赖任何 Agent 框架
+- ✅ **多模型热插拔**：任意 OpenAI 兼容端点（DeepSeek / 千问 / Moonshot / 智谱 / Ollama / vLLM），一个 YAML 搞定
+- ✅ **真·流式 Web 体验**：SSE 打字机、思考链折叠、工具卡实时状态、React 19 + Zustand
+- ✅ **企业级安全沙箱**：workspace realpath 越界校验、`@mount` 只读挂载、命令/域名白名单、危险工具审批闸门
+- ✅ **长上下文记忆**：1M 窗口校准 + 大参数历史压缩 + 80% 自动摘要（不再粗暴砍历史）
+- ✅ **协议级健壮性**：非法 `function.arguments` 本地拦截、工具异常回灌、上游 400 防御
+- ✅ **可观测与成本**：Token/缓存命中率/节省估算、结构化日志与密钥脱敏、会话级统计
+- ✅ **一键启动 / 一键部署**：Windows `start.bat`；Docker Compose 一条命令跑通
+
+## 界面预览
+
+<table>
+  <tr>
+    <td width="50%"><img src="./assets/ui-chat.png" alt="Nexus 智枢 - 对话与工具调用界面" width="100%" /></td>
+    <td width="50%"><img src="./assets/ui-approval.png" alt="Nexus 智枢 - 审批卡片与代码沙箱" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>对话 · 真流式 · 工具卡</sub></td>
+    <td align="center"><sub>审批卡片 · 代码预览 · 沙箱</sub></td>
+  </tr>
+</table>
+
+## 为什么做这个？
+
+> 💡 市面上大多是云端套壳，数据不保。Nexus 智枢将 1M 上下文、本地文件沙箱、多根挂载和真流式拼接全部下沉到本地，**数据不出你的电脑**。
 
 ## 项目结构
 
