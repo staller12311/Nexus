@@ -282,7 +282,7 @@ python -m agent config check    # 打印将要使用的配置；密钥缺失时�
 后端用例：`tests/test_backend_service.py` 覆盖工作区 / 知识库 / 自定义模型 / 用量统计 / 审批接口；
 本轮新增非法 JSON 本地拦截 2 条（loop 单元 + 真实 HTTP 假端点逐请求校验）与
 `run_python_code` / 审批相关修正，总数从 321 增至 323。
-前端：35 个测试文件 / 197 passed + 6 skipped（含审批卡片、SSE 审批事件、模型菜单、状态栏用例）。
+前端：37 个测试文件 / 199 passed + 6 skipped（含审批卡片、审批+流式稳定性、错误边界、模型菜单、状态栏用例）。
 
 ## 如何新增一个工具
 
@@ -1812,6 +1812,12 @@ Low 进程写 `D:\ProjectA` 一定失败。系统 python（`D:\python3.11\python
 `StrictLoop.test.tsx`（StrictMode 下流式 / 工作区弹窗 / 目录选择器三条路径），
 任何一条出现 `Maximum update depth` 都会让测试失败。
 
+**同类报错再次出现（2026-10-29）**：用户在一次商城页面生成中再次看到同一句 React 报错。
+本轮新增 `ErrorBoundary`（页面级兜底 + 组件栈展示）与 React 19 root 的
+`onUncaughtError` / `onCaughtError` 日志；多次复现尝试（真实模型 6KB 代码审批卡、
+审批卡 + 100 帧流式、加载 29 条历史会话、长思考模型）均未能重现，因此没有改动渲染逻辑。
+以后再出现时，Console 里 `[MyAi] 页面渲染异常` 会直接给出出错组件，可据此定点修复。
+
 ### 62. 文件 CRUD 补齐（create_dir / delete_path / move_path）+ 低完整性进程诊断
 
 **① 新工具**（`agent/tools/files.py`、`registry.py`、`KNOWN_TOOLS`、`config.yaml`）：
@@ -1926,7 +1932,7 @@ src/components/__init__.py
 
 **测试**：新增 `ModelMenu.test.tsx` 5 条（侧边栏无模型控件、菜单向上弹出且 `z-50`、选择写回 store、
 底部入口打开弹窗、streaming 时禁用/仍可管理）；`ModelManager` / `ModelPicker` / `FetchModels` / `App`
-等用例改为从 Composer 进入。前端 35 文件 / 197 passed + 6 skipped（含后续审批卡用例）；`tsc --noEmit` 通过。
+等用例改为从 Composer 进入。前端 37 文件 / 199 passed + 6 skipped（含后续审批卡 / 错误边界用例）；`tsc --noEmit` 通过。
 
 ### 65. Human-in-the-loop 工具审批：线程阻塞网关 + SSE 审批卡片
 
