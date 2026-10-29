@@ -79,11 +79,14 @@ def test_write_file_inside_workspace(workspace: Workspace, ws_root: Path) -> Non
     assert "已写入 notes/new.txt" in message
     assert (ws_root / "notes" / "new.txt").read_text(encoding="utf-8") == "新内容"
     assert "已创建缺失的父目录" in message
+    assert "文件已存在" not in message
 
 
 def test_write_file_overwrites_existing(workspace: Workspace, ws_root: Path) -> None:
     write_file(workspace, "a.txt", "覆盖后")
     assert (ws_root / "a.txt").read_text(encoding="utf-8") == "覆盖后"
+    message = write_file(workspace, "a.txt", "再次覆盖")
+    assert "文件已存在，已执行覆盖" in message
 
 
 def test_list_dir_inside_workspace(workspace: Workspace) -> None:

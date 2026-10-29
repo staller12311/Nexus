@@ -728,6 +728,67 @@ def test_full_loop_arguments_verbatim_on_the_wire(
     storage.close()
 
 
+def test_full_loop_invalid_json_arguments_never_reach_upstream(
+    server_factory: Callable[..., ScriptedOpenAIServer], tmp_path: Path
+) -> None:
+    """模型把 HTML 引号转义写坏：本地拦截后，线上请求体里的 arguments 必须全部合法。
+
+    真实上游会返回 400 The "function.arguments" parameter must be in JSON format；
+    这里用真实 HTTP 假端点抓请求体，逐个 json.loads 校验，证明不会再出现 400。
+    """
+    # 模拟长 HTML：大量引号 + 6000 字符正文，转义写坏（真实事故现场）
+    invalid_arguments = (
+        '{"path": "index.html", "content": "<div class="hero">'
+        + "A" * 6000
+        + '</div>"}'
+    )
+    assert len(invalid_arguments) > 5000
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(invalid_arguments)  # 先确认它确实是坏 JSON
+
+    server = server_factory(
+        [
+            chat_completion(
+                None,
+                tool_calls=[
+                    {
+                        "id": "call_bad_args",
+                        "type": "function",
+                        "function": {
+                            "name": "write_file",
+                            "arguments": invalid_arguments,
+                        },
+                    }
+                ],
+                finish_reason="tool_calls",
+            ),
+            chat_completion("我重新生成了一组合法参数。"),
+        ]
+    )
+    loop, storage, session, workspace = build_loop_stack(server, tmp_path)
+
+    result = loop.run("帮我写一个商城首页")
+
+    assert result.content == "我重新生成了一组合法参数。"
+    assert not (workspace / "index.html").exists(), "非法调用不应真正执行工具"
+
+    # 第二次请求里：assistant 的 arguments 已被替换成合法 JSON 占位；tool 消息说明原因
+    second = server.requests[1]["body"]["messages"]
+    assistant = [m for m in second if m["role"] == "assistant"][0]
+    assert json.loads(assistant["tool_calls"][0]["function"]["arguments"]) == {}
+    tool_message = [m for m in second if m["role"] == "tool"][0]
+    assert "不是合法 JSON" in tool_message["content"]
+    assert "请重新生成" in tool_message["content"]
+
+    # 关键断言：所有实际发给上游的 tool_calls.arguments 都能被解析
+    for request in server.requests:
+        for message in request["body"]["messages"]:
+            for call in message.get("tool_calls") or []:
+                assert isinstance(call["function"]["arguments"], str)
+                json.loads(call["function"]["arguments"])
+    storage.close()
+
+
 def test_full_loop_feeds_tool_error_back_to_model(
     server_factory: Callable[..., ScriptedOpenAIServer], tmp_path: Path
 ) -> None:

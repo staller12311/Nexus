@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import asdict, dataclass
 from typing import Any, Callable, Collection, Iterator, Mapping, Sequence
@@ -25,12 +26,31 @@ from .logging_setup import get_logger
 from .provider import ChatResult, Provider, ToolCall, Usage
 from .registry import ERROR_PREFIX, ToolRegistry
 from .storage import Storage
+from .tools import ToolError
 
-__all__ = ["AgentLoop", "LoopResult", "APPROVAL_REJECTED_MESSAGE", "trim_history"]
+__all__ = [
+    "AgentLoop",
+    "LoopResult",
+    "APPROVAL_REJECTED_MESSAGE",
+    "INVALID_ARGUMENTS_MESSAGE",
+    "ToolArgumentsError",
+    "trim_history",
+]
 
 #: 审批被拒绝时回灌给模型的工具结果。
 #: 不带「错误：」前缀：拒绝是用户的正常决策，不是程序/工具错误。
 APPROVAL_REJECTED_MESSAGE = "用户已拒绝此操作，工具未执行。"
+
+#: tool_call.arguments 不是合法 JSON 对象时的本地占位。
+#: 占位必须是合法 JSON —— 否则回填后的历史发给上游仍会被 400 拒绝。
+INVALID_ARGUMENTS_PLACEHOLDER = "{}"
+#: 本地拦截后回灌给模型的错误文本（模型看到后可在同一轮内重新生成）。
+INVALID_ARGUMENTS_MESSAGE = "参数不是合法 JSON，请重新生成（本次工具未执行）。"
+
+
+class ToolArgumentsError(ToolError):
+    """模型的 function.arguments 不是合法 JSON：本地拦截，绝不发给上游。"""
+
 
 
 @dataclass(frozen=True)
@@ -138,6 +158,8 @@ class AgentLoop:
         #: 人工审批：handler 返回 True 才执行；None 表示不启用（CLI 关闭审批时）
         self.approval_handler = approval_handler
         self.approval_required = frozenset(approval_required)
+        #: 本轮被本地拦截的非法 arguments：call_id -> 错误文本
+        self._invalid_arguments: dict[str, str] = {}
         self._logger = logger or get_logger("agent.loop")
 
         self._messages: list[dict[str, Any]] = [dict(m) for m in (history or [])]
@@ -282,6 +304,8 @@ class AgentLoop:
                 yield {"type": "text", "text": content}
 
             result = ChatResult(content=content, tool_calls=tool_calls, usage=usage)
+            # 构造 assistant 历史前先校验 arguments：非法 JSON 绝不能回填/发给上游
+            result, invalid_arguments = self._sanitize_tool_arguments(result)
             assistant_message = self.build_assistant_message(result)
             # 思维链与单轮 usage 随 assistant 消息一起落库（只给前端回放，不进请求）
             usage_payload = asdict(usage) if usage.total_tokens or usage.prompt_tokens else None
@@ -300,7 +324,8 @@ class AgentLoop:
                 return
 
             rounds += 1
-            self._execute_tool_calls(tool_calls)
+            self._invalid_arguments = invalid_arguments
+            self._execute_tool_calls(result.tool_calls)
 
     # ---- 消息构造 -------------------------------------------------------
     @staticmethod
@@ -321,7 +346,8 @@ class AgentLoop:
 
         - ``content`` 可以是 ``None``，但**字段必须存在**；
         - 带 ``tool_calls`` 时，``arguments`` 使用 provider 给出的原始字符串，
-          在这里既不解析也不重新序列化。
+          在这里既不解析也不重新序列化；但调用前已经过
+          ``_sanitize_tool_arguments()`` 校验，保证这里的一定是合法 JSON 对象。
         """
         message: dict[str, Any] = {"role": "assistant", "content": result.content}
         if result.tool_calls:
@@ -334,6 +360,58 @@ class AgentLoop:
                 for call in result.tool_calls
             ]
         return message
+
+    def _sanitize_tool_arguments(
+        self, result: ChatResult
+    ) -> tuple[ChatResult, dict[str, str]]:
+        """构造 assistant 历史前校验每个 ``function.arguments`` 是否是合法 JSON 对象。
+
+        模型生成 HTML/JS 这类引号密集的代码时，偶尔会把 JSON 转义写坏。原样回填
+        ``assistant.tool_calls[].function.arguments`` 后，下一轮请求会被上游以
+        ``400 The "function.arguments" parameter must be in JSON format`` 拒绝，
+        模型还会反复重试直到打满轮数。这里在**本地**拦截：
+
+        - 非法调用的 arguments 替换为 ``{}``（保证历史与上游请求永远合法）；
+        - 该工具不执行，tool 结果回灌「参数不是合法 JSON，请重新生成」；
+        - 模型在同一轮内看到错误后自行纠正，不会出现上游 400。
+        """
+        if not result.tool_calls:
+            return result, {}
+
+        invalid: dict[str, str] = {}
+        sanitized: list[ToolCall] = []
+        for call in result.tool_calls:
+            try:
+                parsed = json.loads(call.arguments)
+            except (TypeError, ValueError):
+                parsed = None
+            if not isinstance(parsed, dict):
+                invalid[call.id] = INVALID_ARGUMENTS_MESSAGE
+                self._logger.warning(
+                    "工具 %s 的 arguments 不是合法 JSON 对象，已本地拦截（原始 %d 字符）",
+                    call.name,
+                    len(call.arguments) if isinstance(call.arguments, str) else 0,
+                )
+                sanitized.append(
+                    ToolCall(
+                        id=call.id,
+                        name=call.name,
+                        arguments=INVALID_ARGUMENTS_PLACEHOLDER,
+                    )
+                )
+            else:
+                sanitized.append(call)
+
+        if not invalid:
+            return result, {}
+        return (
+            ChatResult(
+                content=result.content,
+                tool_calls=tuple(sanitized),
+                usage=result.usage,
+            ),
+            invalid,
+        )
 
     @staticmethod
     def build_tool_message(call: ToolCall, output: str) -> dict[str, Any]:
@@ -353,7 +431,10 @@ class AgentLoop:
         for call in tool_calls:
             if self.on_tool_call is not None:
                 self.on_tool_call(call)
-            output = self._run_tool(call)
+            try:
+                output = self._run_tool(call)
+            except ToolArgumentsError as exc:
+                output = f"{ERROR_PREFIX}{exc}"
             if self.on_tool_result is not None:
                 self.on_tool_result(call, output)
             if output == APPROVAL_REJECTED_MESSAGE:
@@ -375,6 +456,9 @@ class AgentLoop:
         把「用户已拒绝此操作」作为 tool 结果回灌 —— 历史仍是合法序列
         （assistant tool_calls 有对应 tool 消息），模型可以继续解释或换方案。
         """
+        invalid = self._invalid_arguments.pop(call.id, None)
+        if invalid is not None:
+            raise ToolArgumentsError(invalid)
         if self.approval_handler is not None and call.name in self.approval_required:
             approved = self.approval_handler(call)
             if not approved:

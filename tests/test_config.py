@@ -60,9 +60,17 @@ def test_example_config_is_valid() -> None:
     # 任意代码执行工具默认关闭（config.example.yaml 只在 approval_required 里登记它）
     assert "run_python_code" not in config.tools.enabled
     assert "run_python_code" in config.tools.approval_required
+    # write_file / create_dir 在沙箱内静默执行，不再逐次审批
+    assert "write_file" not in config.tools.approval_required
+    assert "create_dir" not in config.tools.approval_required
+    assert set(config.tools.approval_required) == {
+        "run_python_code",
+        "delete_path",
+        "run_shell",
+    }
     assert config.tools.python_exec.timeout == 10
     assert config.tools.python_exec.max_output_chars == 8000
-    assert config.agent.max_tool_rounds == 8
+    assert config.agent.max_tool_rounds == 15
     assert config.logging.level == "INFO"
 
 

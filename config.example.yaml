@@ -33,7 +33,7 @@ agent:
   #     path: ../SharedLibs
   #     writable: false
   extra_workspaces: []
-  max_tool_rounds: 8            # 工具调用循环上限
+  max_tool_rounds: 15           # 工具调用循环上限（复杂页面/长任务留足重试空间）
   max_history_messages: 40      # 送进模型的历史消息上限
   request_timeout: 60
   max_retries: 3
@@ -51,9 +51,9 @@ tools:
   # 危险工具调用前挂起，等人工确认（Web 端黄色审批卡片 / CLI 终端 y/N）。
   # 默认关闭，避免"复制配置直接跑批量写入"；需要时改成 true。
   require_approval: false
-  # 即使 require_approval=false，这里也必须保留 run_python_code：一旦有人把
-  # require_approval 打开，任意代码执行不应漏掉审批（也可自行加别的工具）。
-  approval_required: [write_file, delete_path, move_path, run_python_code]
+  # 审批只覆盖「代码执行 / 删除 / shell」；write_file、create_dir 在 workspace
+  # 沙箱边界内静默执行（覆盖已有文件会在工具结果里注明），避免生成页面时逐文件打断。
+  approval_required: [run_python_code, delete_path, run_shell]
   approval_timeout: 300          # 秒；超时/页面关闭都按「拒绝」处理
   run_shell:
     # 只能填 PATH 中真实存在的可执行文件（如 git、python、rg）。

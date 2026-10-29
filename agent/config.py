@@ -50,8 +50,9 @@ KNOWN_TOOLS = (
 )
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 
-#: 默认需要人工审批的工具（危险的文件写操作 + 任意代码执行；run_python_code 在引入后加入）
-DEFAULT_APPROVAL_TOOLS = ("write_file", "delete_path", "move_path", "run_python_code")
+#: 默认需要人工审批的工具：代码执行 / 删除 / shell。
+#: write_file、create_dir 在 workspace 沙箱边界内静默执行（覆盖已有文件会在结果里注明）。
+DEFAULT_APPROVAL_TOOLS = ("run_python_code", "delete_path", "run_shell")
 
 
 class ConfigError(Exception):

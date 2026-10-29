@@ -278,10 +278,10 @@ python -m agent config check    # 打印将要使用的配置；密钥缺失时�
 > 必须用 `python -m pytest`（而不是裸 `pytest`）：测试通过包名 `agent.*` 导入，
 > 需要仓库根目录在 `sys.path` 上，`python -m` 会把当前目录加进去。
 
-当前全量：**321 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
+当前全量：**323 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
 后端用例：`tests/test_backend_service.py` 覆盖工作区 / 知识库 / 自定义模型 / 用量统计 / 审批接口；
-本轮新增审批流 11 条（Gate/Registry/loop/接口）与 `run_python_code` 16 条（执行/超时/清理/参数校验），
-总数从 290 增至 321。
+本轮新增非法 JSON 本地拦截 2 条（loop 单元 + 真实 HTTP 假端点逐请求校验）与
+`run_python_code` / 审批相关修正，总数从 321 增至 323。
 前端：35 个测试文件 / 197 passed + 6 skipped（含审批卡片、SSE 审批事件、模型菜单、状态栏用例）。
 
 ## 如何新增一个工具
@@ -620,7 +620,7 @@ cd frontend && npm run test
 - [x] **三种用法示例**：`run "问题"` / `chat` / `sessions resume <id>`，均在 `## 运行`，附真实终端输出
 - [x] **如何新增一个模型**：`### 如何新增一个模型`（Moonshot 示例 + `.env` 步骤 + 真实 `config check` 输出）
 - [x] **如何新增一个工具**：`## 如何新增一个工具`（`get_time` 示例 + 5 步改动 + 真实 `tools list` / `run` 输出）
-- [x] **「设计决策」章节**：`## 设计决策`（66 条，含 Web 阶段的 34–66）
+- [x] **「设计决策」章节**：`## 设计决策`（67 条，含 Web 阶段的 34–67）
 
 Web 界面（第一阶段 CLI 之外的增量交付）：
 
@@ -647,6 +647,8 @@ Web 界面（第一阶段 CLI 之外的增量交付）：
   （write_file 带只读代码预览）→ `POST /api/chat/approve`；超时/断开自动拒绝（第 65 条）
 - [x] **run_python_code 代码执行器**：工作区临时脚本 + 子进程 + 超时/输出截断，
   默认关闭、默认纳入审批集合（第 66 条）
+- [x] **非法 JSON arguments 本地拦截**：构造历史前 `json.loads` 校验，非法参数替换为 `{}`
+  并回灌错误，彻底避免上游 400 与无脑重试（第 67 条）
 
 ## 已知待办
 
@@ -1713,7 +1715,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 写 @libs 的要求: 模型自己拒绝（只读挂载），且 @libs 文件内容未被改动（PORT 仍 8080）
 ```
 
-`pytest` 仍 321 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
+`pytest` 仍 323 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
 
 ### 60. 目录选择器：点着选，不用手打绝对路径
 
@@ -1928,7 +1930,8 @@ src/components/__init__.py
 
 ### 65. Human-in-the-loop 工具审批：线程阻塞网关 + SSE 审批卡片
 
-**目标**：AI 想写/删/移动文件时，先挂起，让人看到「即将发生什么」再决定。
+**目标**：AI 要做**代码执行 / 删除 / shell** 这类高危操作时，先挂起，让人看到「即将发生什么」再决定；
+写入/建目录在 workspace 沙箱边界内静默执行，避免生成页面时每个文件弹一次、打断心流。
 
 **线程模型（关键）**：Agent 循环跑在 `asyncio.to_thread` 的工作线程里，所以「挂起」不用协程，
 而是 `backend/service/approvals.py` 里的同步原语：
@@ -1939,11 +1942,14 @@ src/components/__init__.py
   `用户已拒绝此操作，工具未执行。` 回填成 tool 消息；再加上 `AgentLoop.abort_pending_tool_calls()`
   收尾，历史永远合法（绝不悬空 `tool_call`）。
 - 配置：`tools.require_approval` / `approval_required` / `approval_timeout`；
-  `run_python_code` 默认也在审批集合里。CLI 用终端 y/N，非 TTY 自动拒绝。
+  默认审批集合 = `run_python_code` / `delete_path` / `run_shell`；
+  `write_file`、`create_dir` 不在集合内（沙箱内静默执行，覆盖已有文件时结果会注明
+  「文件已存在，已执行覆盖」）。CLI 用终端 y/N，非 TTY 自动拒绝。
 
 **前端**：`approval_required` 事件把 `approval` 状态挂到对应工具卡片上，`ApprovalCard` 渲染黄色卡片：
 `write_file` 解析 `path`/`content`，用只读 `CodeBlock`（行号 + 高亮）展示即将写入的内容
-（超 200 行折叠并提示「同意后完整写入」）；`delete_path`/`move_path` 展示路径与不可逆提醒；
+（超 200 行折叠并提示「同意后完整写入」；默认审批集合已不含 write_file，但把它加回配置时
+仍会使用这套富文本预览）；`delete_path`/`move_path` 展示路径与不可逆提醒；
 按钮 `同意执行` / `拒绝`；决定后卡片降级为普通工具卡 + 「已同意/已拒绝/审批过期」徽标，
 `tool_call_end` 的结果照常展示（执行结果可见）。
 
@@ -1973,3 +1979,29 @@ src/components/__init__.py
 **依赖自检**：`backend/main.py` 启动时尝试 import `docx`/`pypdf`，缺失则控制台黄色打印
 「⚠️ 缺少依赖 python-docx 或 pypdf，文档解析功能将不可用。请运行 pip install -r requirements.txt」，
 只警告、不崩溃。
+
+### 67. 非法 JSON arguments 本地拦截 + 审批粒度调优（长任务不再 400 与弹窗轰炸）
+
+**现象**：生成带大量引号/特殊字符的 HTML/JS 时，模型偶尔把 `function.arguments` 的 JSON
+转义写坏。旧实现把原始字符串原样回填进 assistant 历史，下一轮请求被上游以
+`400 The "function.arguments" parameter must be in JSON format` 拒绝；模型判定失败后反复重试，
+几秒内打满 `max_tool_rounds`，整轮报废。
+
+**本地拦截（`agent/loop.py`）**：在构造 assistant 消息回填历史**之前**，
+对每个 `tool_call.arguments` 做 `json.loads` 且要求解析结果是 JSON 对象：
+- 合法 → 原样透传（保留模型的空白/转义风格，不改写）；
+- 非法 → 绝不发给上游：该调用 arguments 替换为合法占位 `{}`，工具**不执行**，
+  tool 结果回灌「参数不是合法 JSON，请重新生成（本次工具未执行）。」；
+- 模型在同一轮内看到这条 tool 错误后自行纠正，不再产生上游 400；
+- 同时保留 `ToolArgumentsError`（ToolError 子类）与 warning 日志，便于排查；
+- 多 tool_calls 混合场景：合法调用照常执行，只有坏的那条被拦截。
+
+**审批粒度调优**：`write_file` / `create_dir` 移出 `approval_required`（workspace 沙箱内
+写入属于预期行为），审批只保留 `run_python_code` / `delete_path` / `run_shell`。
+`write_file` 覆盖已有文件时返回「文件已存在，已执行覆盖」，让模型明确知道这次是覆盖而不是新建。
+`max_tool_rounds` 默认 8 → 15，给复杂页面生成留出重试空间；`write_file` / `run_python_code`
+的 description 增加「生成含大量引号/特殊字符的代码时请确保 JSON 转义正确」提示。
+
+**验证**：`tests/test_loop.py` 覆盖单条与多 tool_call 的非法 arguments 拦截；
+`tests/test_mock_server.py` 用真实 HTTP 假端点抓取每个请求体，断言所有
+`tool_calls[].function.arguments` 都能被 `json.loads` 解析，并验证非法调用未真正写文件。

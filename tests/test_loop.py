@@ -516,7 +516,8 @@ class TestToolFailuresAreFedBack:
         tool_message = [m for m in provider.requests[1]["messages"] if m["role"] == "tool"][0]
         assert "内部异常" in tool_message["content"]
 
-    def test_invalid_json_arguments_become_error_text(self) -> None:
+    def test_invalid_json_arguments_are_blocked_locally(self) -> None:
+        """非法 arguments 绝不能原样回填历史：上游会 400，模型会疯狂重试。"""
         registry = ToolRegistry()
         registry.register(echo_spec())
         provider = fake_provider(
@@ -525,12 +526,58 @@ class TestToolFailuresAreFedBack:
         loop = AgentLoop(provider, registry)
         assert loop.run("go").content == "我改正了"
 
-        tool_message = [m for m in provider.requests[1]["messages"] if m["role"] == "tool"][0]
+        messages = provider.requests[1]["messages"]
+        tool_message = [m for m in messages if m["role"] == "tool"][0]
         assert "不是合法 JSON" in tool_message["content"]
-        assert "请重试" in tool_message["content"]
-        # assistant 里保留的仍是原始字符串
-        assistant = [m for m in provider.requests[1]["messages"] if m["role"] == "assistant"][0]
-        assert assistant["tool_calls"][0]["function"]["arguments"] == "{not json"
+        assert "请重新生成" in tool_message["content"]
+        # 回填/发给上游的 arguments 必须能通过 json.loads（否则 400）
+        assistant = [m for m in messages if m["role"] == "assistant"][0]
+        assert json.loads(assistant["tool_calls"][0]["function"]["arguments"]) == {}
+        assert_no_orphan_tool_messages(loop.messages)
+
+    def test_only_invalid_call_is_blocked(self) -> None:
+        """一次返回多个 tool_call 时，合法调用照常执行，非法调用单独拦截。"""
+        executed: list[str] = []
+
+        def echo(text: str = "") -> str:
+            executed.append(text)
+            return f"echo:{text}"
+
+        registry = ToolRegistry()
+        registry.register(
+            ToolSpec(
+                name="echo",
+                description="回显",
+                parameters=string_schema(
+                    {"text": {"type": "string", "description": "文本"}}
+                ),
+                handler=echo,
+            )
+        )
+        provider = fake_provider(
+            [
+                tool_result(
+                    ToolCall("good", "echo", '{"text": "ok"}'),
+                    ToolCall("bad", "echo", '{"text": "unterminated}'),
+                ),
+                final("完成"),
+            ]
+        )
+        loop = AgentLoop(provider, registry)
+        assert loop.run("go").content == "完成"
+
+        assert executed == ["ok"]
+        messages = provider.requests[1]["messages"]
+        assistant = [m for m in messages if m["role"] == "assistant"][0]
+        parsed = [
+            json.loads(call["function"]["arguments"])
+            for call in assistant["tool_calls"]
+        ]
+        assert parsed[0] == {"text": "ok"}
+        assert parsed[1] == {}
+        tool_messages = [m for m in messages if m["role"] == "tool"]
+        assert tool_messages[0]["content"] == "echo:ok"
+        assert "不是合法 JSON" in tool_messages[1]["content"]
         assert_no_orphan_tool_messages(loop.messages)
 
     def test_unknown_tool_becomes_error_text(self) -> None:

@@ -304,6 +304,7 @@ def build_registry(config: AppConfig, logger: logging.Logger | None = None) -> T
             name="write_file",
             description=(
                 "把文本写入 workspace 内的文件（UTF-8，必要时创建父目录），已存在的文件会被覆盖。"
+                "生成包含大量引号、特殊字符的代码（如 HTML/JS）时，请确保 JSON 转义正确。"
                 "附加挂载默认只读，写入只读挂载会被拒绝。"
                 f"{mounts_text}"
             ),
@@ -430,6 +431,7 @@ def build_registry(config: AppConfig, logger: logging.Logger | None = None) -> T
                 f"默认超时 {config.tools.python_exec.timeout:g}s，"
                 f"stdout / stderr 各截断到 {config.tools.python_exec.max_output_chars} 字符"
                 "（截断处会注明省略量）；只读挂载不能放临时文件。"
+                "生成包含大量引号、特殊字符的代码（如 HTML/JS）时，请确保 JSON 转义正确。"
             ),
             parameters=_object_schema(
                 {

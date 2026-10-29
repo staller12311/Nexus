@@ -267,6 +267,7 @@ def write_file(workspace: Workspace, path: str, content: str) -> str:
     if target.is_dir():
         raise ToolError(f"{relative} 是目录，不能覆盖写入。")
 
+    existed = target.exists()
     parent_is_new = not target.parent.exists()
     try:
         if parent_is_new:
@@ -282,7 +283,8 @@ def write_file(workspace: Workspace, path: str, content: str) -> str:
         raise ToolError(f"写入 {relative} 失败：{exc}") from exc
 
     note = "（已创建缺失的父目录）" if parent_is_new else ""
-    return f"已写入 {relative}，{_human_size(len(data))}{note}"
+    overwrite_note = "（文件已存在，已执行覆盖）" if existed else ""
+    return f"已写入 {relative}，{_human_size(len(data))}{note}{overwrite_note}"
 
 
 def create_dir(workspace: Workspace, path: str) -> str:
