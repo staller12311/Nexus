@@ -82,7 +82,14 @@ def test_example_config_keeps_field_names() -> None:
         "request_timeout",
         "max_retries",
     }
-    assert set(raw["tools"]) == {"enabled", "run_shell", "http_get"}
+    assert set(raw["tools"]) == {
+        "enabled",
+        "require_approval",
+        "approval_required",
+        "approval_timeout",
+        "run_shell",
+        "http_get",
+    }
     assert set(raw["storage"]) == {"db_path"}
     assert set(raw["logging"]) == {"level", "file"}
 

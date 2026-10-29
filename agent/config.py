@@ -49,6 +49,9 @@ KNOWN_TOOLS = (
 )
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 
+#: 默认需要人工审批的工具（危险的文件写操作；run_python_code 在引入后也加入）
+DEFAULT_APPROVAL_TOOLS = ("write_file", "delete_path", "move_path")
+
 
 class ConfigError(Exception):
     """配置文件缺失、无法解析或校验失败。"""
@@ -166,6 +169,14 @@ class ToolsConfig(_StrictModel):
     enabled: list[str] = Field(
         default_factory=lambda: ["read_file", "write_file", "list_dir", "get_time"]
     )
+    #: 危险工具调用前是否挂起等人工审批（Web 走 SSE 审批卡片，CLI 走终端 y/N）
+    require_approval: bool = False
+    #: 需要审批的工具名（require_approval=false 时不生效，但仍会做合法性校验）
+    approval_required: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_APPROVAL_TOOLS)
+    )
+    #: 审批等待上限（秒）；超时/客户端断开都按「拒绝」处理
+    approval_timeout: float = Field(default=300, gt=0)
     run_shell: RunShellConfig = Field(default_factory=RunShellConfig)
     http_get: HttpGetConfig = Field(default_factory=HttpGetConfig)
 
@@ -180,6 +191,20 @@ class ToolsConfig(_StrictModel):
         duplicated = sorted({name for name in value if value.count(name) > 1})
         if duplicated:
             raise ValueError(f"tools.enabled 中存在重复项：{duplicated}")
+        return value
+
+    @field_validator("approval_required")
+    @classmethod
+    def _known_approval_tools(cls, value: list[str]) -> list[str]:
+        unknown = [name for name in value if name not in KNOWN_TOOLS]
+        if unknown:
+            raise ValueError(
+                f"tools.approval_required 存在未知工具名 {unknown}，"
+                f"可用工具为 {list(KNOWN_TOOLS)}"
+            )
+        duplicated = sorted({name for name in value if value.count(name) > 1})
+        if duplicated:
+            raise ValueError(f"tools.approval_required 中存在重复项：{duplicated}")
         return value
 
 

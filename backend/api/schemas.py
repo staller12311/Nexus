@@ -238,3 +238,17 @@ class FsListingOut(BaseModel):
 class FsMkdirIn(BaseModel):
     parent: str = Field(description="父目录绝对路径")
     name: str = Field(description="新建的文件夹名（单段，不含分隔符）")
+
+
+class ApproveIn(BaseModel):
+    """人工审批决策（POST /api/chat/approve）。"""
+
+    approval_id: str = Field(description="SSE approval_required 事件里的 approval_id")
+    approved: bool = Field(description="True=同意执行，False=拒绝")
+    reason: str = Field(default="", description="可选：拒绝原因（只写日志，不回灌模型）")
+
+
+class ApproveOut(BaseModel):
+    ok: bool
+    approval_id: str
+    approved: bool

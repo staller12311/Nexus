@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import sqlite3
@@ -32,6 +33,7 @@ from .custom_models import (
     CustomModelStore,
     DuplicateCustomModel,
 )
+from .approvals import ApprovalRegistry
 from .knowledge import KnowledgeService, build_search_tool
 from .model_runtime import build_custom_provider
 from .web_search import WebSearchService, build_web_search_tool
@@ -47,6 +49,8 @@ from .workspace import (
 #: 标题里要清掉的标点与空白（模型经常不听话地加句号/引号/书名号）
 _TITLE_NOISE = re.compile(r"[\s\"'“”‘’《》「」【】\[\]()（）<>.,，。!！?？:：;；、\-—_*#`~|/\\]+")
 _TITLE_PREFIX = re.compile(r"^(标题|topic|title)\s*[:：]?\s*", re.IGNORECASE)
+
+logger = logging.getLogger("agent.web")
 
 DEFAULT_SESSION_LIMIT = 20
 #: 自定义模型没有 context_window 字段时的保守默认值（OpenAI 兼容端点的常见下限）
@@ -137,6 +141,8 @@ class AgentService:
         self.web_search = WebSearchService()
         # 工作区设置（README 第 58 条）
         self.workspace_settings = WorkspaceSettings(config.db_path)
+        #: 人工审批登记表（进程级；本地单用户场景足够）
+        self.approvals = ApprovalRegistry()
         self._workspace: Path | None = None
         self._extras: tuple[Mount, ...] = ()
         persisted = self.workspace_settings.get()
@@ -565,6 +571,7 @@ class AgentService:
         model: str | None = None,
         on_tool_call: Callable[[ToolCall], None] | None = None,
         on_tool_result: Callable[[ToolCall, str], None] | None = None,
+        approval_handler: Callable[[ToolCall], bool] | None = None,
     ) -> ChatOutcome:
         """跑一轮问答。工具执行前后会触发回调（供 SSE 推送事件）。
 
@@ -591,6 +598,7 @@ class AgentService:
                     history=history,
                     on_tool_call=on_tool_call,
                     on_tool_result=on_tool_result,
+                    approval_handler=approval_handler,
                 )
                 result = loop.run(text)
             finally:
@@ -611,6 +619,7 @@ class AgentService:
         model: str | None = None,
         on_tool_call: Callable[[ToolCall], None] | None = None,
         on_tool_result: Callable[[ToolCall, str], None] | None = None,
+        approval_handler: Callable[[ToolCall], bool] | None = None,
     ) -> Iterator[dict[str, Any]]:
         """流式跑一轮问答，产出**SSE 就绪**的事件字典（真·逐 token）。
 
@@ -626,6 +635,7 @@ class AgentService:
             model=model,
             on_tool_call=on_tool_call,
             on_tool_result=on_tool_result,
+            approval_handler=approval_handler,
         )
 
     def regenerate_stream(
@@ -635,6 +645,7 @@ class AgentService:
         model: str | None = None,
         on_tool_call: Callable[[ToolCall], None] | None = None,
         on_tool_result: Callable[[ToolCall, str], None] | None = None,
+        approval_handler: Callable[[ToolCall], bool] | None = None,
     ) -> Iterator[dict[str, Any]]:
         """重新生成：删掉「最后一条 user 及其之后」的消息，再用同一句话重跑。
 
@@ -652,6 +663,7 @@ class AgentService:
             model=model,
             on_tool_call=on_tool_call,
             on_tool_result=on_tool_result,
+            approval_handler=approval_handler,
         )
 
     def _stream_turn(
@@ -662,6 +674,7 @@ class AgentService:
         model: str | None = None,
         on_tool_call: Callable[[ToolCall], None] | None = None,
         on_tool_result: Callable[[ToolCall, str], None] | None = None,
+        approval_handler: Callable[[ToolCall], bool] | None = None,
     ) -> Iterator[dict[str, Any]]:
         with self._storage() as storage:
             record = storage.find_session(session_id)
@@ -678,6 +691,7 @@ class AgentService:
                     history=history,
                     on_tool_call=on_tool_call,
                     on_tool_result=on_tool_result,
+                    approval_handler=approval_handler,
                 )
                 for event in loop.run_stream(text):
                     kind = event.get("type")
@@ -704,6 +718,12 @@ class AgentService:
                             "tool_limit_reached": result.tool_limit_reached,
                         }
             finally:
+                # 审批被取消 / 客户端断开 / 任何异常退出：把还没回填的 tool_call
+                # 补成「未执行」的结果，保证历史仍是合法序列（不会悬空）。
+                try:
+                    loop.abort_pending_tool_calls("本轮已中断，工具未执行。")
+                except Exception:  # noqa: BLE001 - 收尾失败不能掩盖原始异常
+                    logger.exception("中断收尾失败")
                 provider.close()
 
     # ---- 内部 -----------------------------------------------------------

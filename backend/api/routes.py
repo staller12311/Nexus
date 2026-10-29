@@ -28,8 +28,11 @@ from ..service.knowledge import (
 from ..service.fs_browser import FsBrowseError, create_directory, list_directories
 from ..service.workspace import WorkspaceError
 from ..service.model_fetch import FetchModelsError, fetch_models
+from ..service.approvals import ApprovalAlreadyDecided, ApprovalNotFound
 from ..service.events import EventBridge, encode_event
 from .schemas import (
+    ApproveIn,
+    ApproveOut,
     ChatRequest,
     CustomModelDeletedOut,
     CustomModelIn,
@@ -401,10 +404,43 @@ async def _stream_chat(
                 "type": "tool_call_end",
                 "tool_call_id": call.id,
                 "name": call.name,
-                "ok": not output.startswith("错误："),
+                # 审批拒绝不是程序错误，但也不该显示成成功：统一标成失败态
+                "ok": not output.startswith("错误：")
+                and not output.startswith("用户已拒绝"),
                 "content": output,
             }
         )
+
+    #: 本次流里创建过的审批（用于客户端断开/收尾时取消，避免工作线程永久阻塞）
+    pending_approvals: list[Any] = []
+
+    def on_approval(call: Any) -> bool:
+        """Agent 遇到危险工具时回调：发 SSE 审批事件 → 阻塞等人工决策。"""
+        timeout = float(service.config.tools.approval_timeout)
+        pending = service.approvals.open(
+            session_id=session_id,
+            tool_call_id=call.id,
+            name=call.name,
+            timeout=timeout,
+        )
+        pending_approvals.append(pending)
+        bridge.emit(
+            {
+                "type": "approval_required",
+                "approval_id": pending.approval_id,
+                "session_id": session_id,
+                "tool_call_id": call.id,
+                "name": call.name,
+                # 与 tool_call_start 一致：原样透传模型给的 JSON 字符串
+                "arguments": call.arguments,
+                "expires_in": int(timeout),
+            }
+        )
+        try:
+            return pending.gate.wait()
+        finally:
+            # 无论同意/拒绝/超时，审批都已完成，从登记表移除
+            service.approvals.discard(pending.approval_id)
 
     yield encode_event({"type": "message_start", "session_id": session_id})
 
@@ -417,6 +453,7 @@ async def _stream_chat(
                     model=model,
                     on_tool_call=on_tool_call,
                     on_tool_result=on_tool_result,
+                    approval_handler=on_approval,
                 )
                 if regenerate
                 else service.chat_stream(
@@ -425,6 +462,7 @@ async def _stream_chat(
                     model=model,
                     on_tool_call=on_tool_call,
                     on_tool_result=on_tool_result,
+                    approval_handler=on_approval,
                 )
             )
             for event in events:
@@ -456,6 +494,38 @@ async def _stream_chat(
                 "code": type(exc).__name__,
             }
         )
+    finally:
+        # 客户端断开 / 流结束：取消仍在等待人工决策的审批。
+        # gate.cancel() 会让工作线程按「拒绝」继续，历史依然合法（不会悬空 tool_call）。
+        for pending in pending_approvals:
+            pending.gate.cancel()
+            service.approvals.discard(pending.approval_id)
+
+
+@router.post(
+    "/chat/approve",
+    response_model=ApproveOut,
+    summary="人工审批一次危险工具调用（同意执行 / 拒绝）",
+)
+def approve_tool_call(request: Request, payload: ApproveIn) -> ApproveOut:
+    service = get_service(request)
+    try:
+        pending = service.approvals.resolve(payload.approval_id, payload.approved)
+    except ApprovalNotFound as exc:
+        raise HTTPException(
+            status_code=404, detail=f"审批不存在或已过期：{payload.approval_id}"
+        ) from exc
+    except ApprovalAlreadyDecided as exc:
+        raise HTTPException(status_code=409, detail=f"审批已处理过：{payload.approval_id}") from exc
+
+    logger.info(
+        "审批 %s：%s（工具 %s）%s",
+        pending.approval_id,
+        "同意" if payload.approved else "拒绝",
+        pending.name,
+        f" 原因：{payload.reason}" if payload.reason else "",
+    )
+    return ApproveOut(ok=True, approval_id=pending.approval_id, approved=payload.approved)
 
 
 # ---- 目录选择器（README 第 60 条） ----------------------------------------

@@ -667,3 +667,172 @@ class TestLoopMisc:
         result = LoopResult(content="x", usage=Usage(), rounds=0)
         with pytest.raises(Exception):
             result.content = "y"  # type: ignore[misc]
+
+# ============================================================ 7. 人工审批
+def _approval_config(tmp_path: Path, *, require: bool) -> Any:
+    (tmp_path / "workspace").mkdir(exist_ok=True)
+    return build_config(
+        {
+            "default_model": "m",
+            "models": {
+                "m": {
+                    "base_url": "http://127.0.0.1:9/v1",
+                    "model": "test-model",
+                    "api_key_env": "LOOP_TEST_KEY",
+                }
+            },
+            "agent": {"workspace": str(tmp_path / "workspace")},
+            "tools": {
+                "enabled": ["write_file"],
+                "require_approval": require,
+                "approval_required": ["write_file"],
+            },
+        }
+    )
+
+
+def test_approval_reject_does_not_execute_tool(tmp_path: Path) -> None:
+    """拒绝：工具不执行，但 tool 结果照常回填（历史合法，模型能解释）。"""
+    session = Storage(tmp_path / "s.db").create_session("m")
+    storage = Storage(tmp_path / "s.db")
+
+    executed: list[str] = []
+
+    def handler(path: str = "") -> str:
+        executed.append(path)
+        return "should-not-run"
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="write_file",
+            description="写文件",
+            parameters=string_schema(
+                {"path": {"type": "string"}, "content": {"type": "string"}}
+            ),
+            handler=handler,
+        )
+    )
+
+    calls: list[ToolCall] = []
+
+    def approval(call: ToolCall) -> bool:
+        calls.append(call)
+        return False
+
+    provider = fake_provider(
+        [
+            tool_result(ToolCall("c1", "write_file", '{"path": "a.txt", "content": "hi"}')),
+            final("好的，我就不写了。"),
+        ]
+    )
+    loop = AgentLoop(
+        provider,
+        registry,
+        storage=storage,
+        session_id=session.id,
+        approval_handler=approval,
+        approval_required={"write_file"},
+    )
+
+    result = loop.run("写个文件")
+
+    assert executed == []  # 没有真正执行
+    assert len(calls) == 1 and calls[0].name == "write_file"
+    assert result.content == "好的，我就不写了。"
+    tool_messages = [m for m in loop.messages if m.get("role") == "tool"]
+    assert len(tool_messages) == 1
+    assert tool_messages[0]["content"] == "用户已拒绝此操作，工具未执行。"
+    storage.close()
+
+
+def test_approval_accept_executes_tool(tmp_path: Path) -> None:
+    (tmp_path / "workspace").mkdir(exist_ok=True)
+    session = Storage(tmp_path / "s.db").create_session("m")
+    storage = Storage(tmp_path / "s.db")
+
+    decisions: list[bool] = []
+
+    def approval(call: ToolCall) -> bool:
+        decisions.append(True)
+        return True
+
+    config = _approval_config(tmp_path, require=True)
+    registry = build_registry(config)
+    provider = fake_provider(
+        [
+            tool_result(
+                ToolCall("c1", "write_file", '{"path": "out.txt", "content": "hello"}')
+            ),
+            final("写好了。"),
+        ]
+    )
+    loop = AgentLoop.from_config(
+        config,
+        provider,
+        registry,
+        storage=storage,
+        session_id=session.id,
+        approval_handler=approval,
+    )
+    loop.run("写文件")
+    assert decisions == [True]
+    assert (tmp_path / "workspace" / "out.txt").read_text(encoding="utf-8") == "hello"
+    storage.close()
+
+
+def test_approval_disabled_does_not_call_handler(tmp_path: Path) -> None:
+    (tmp_path / "workspace").mkdir(exist_ok=True)
+    session = Storage(tmp_path / "s.db").create_session("m")
+    storage = Storage(tmp_path / "s.db")
+
+    called: list[ToolCall] = []
+
+    def approval(call: ToolCall) -> bool:
+        called.append(call)
+        return False
+
+    config = _approval_config(tmp_path, require=False)
+    registry = build_registry(config)
+    provider = fake_provider(
+        [
+            tool_result(
+                ToolCall("c1", "write_file", '{"path": "auto.txt", "content": "no-ask"}')
+            ),
+            final("写好了。"),
+        ]
+    )
+    loop = AgentLoop.from_config(
+        config,
+        provider,
+        registry,
+        storage=storage,
+        session_id=session.id,
+        approval_handler=approval,
+    )
+    loop.run("写文件")
+    assert called == []  # require_approval=false：不触发审批
+    assert (tmp_path / "workspace" / "auto.txt").read_text(encoding="utf-8") == "no-ask"
+    storage.close()
+
+
+def test_non_approval_tool_skips_handler(tmp_path: Path) -> None:
+    session = Storage(tmp_path / "s.db").create_session("m")
+    storage = Storage(tmp_path / "s.db")
+    called: list[ToolCall] = []
+    registry = ToolRegistry()
+    registry.register(echo_spec())
+    provider = fake_provider(
+        [tool_result(ToolCall("c1", "echo", '{"text": "hi"}')), final("完成")]
+    )
+    loop = AgentLoop(
+        provider,
+        registry,
+        storage=storage,
+        session_id=session.id,
+        approval_handler=lambda call: called.append(call) or False,
+        approval_required={"write_file"},
+    )
+    loop.run("随便")
+    assert called == []
+    storage.close()

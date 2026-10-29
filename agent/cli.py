@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import re
 import signal
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Sequence
@@ -134,6 +135,34 @@ def print_tool_result(console: Console, call: ToolCall, output: str) -> None:
     line = Text("   ↳ ", style="dim")
     line.append(_clip(first_line, RESULT_SUMMARY_LIMIT), style=style)
     console.print(line)
+
+
+def ask_tool_approval(console: Console, call: ToolCall) -> bool:
+    """CLI 的人工审批：终端里 y/N 确认；非交互环境（管道/CI）一律自动拒绝。
+
+    危险操作不能在没人看着的时候默认放行 —— 这是审批流的安全底线。
+    """
+    if not sys.stdin.isatty():
+        console.print(
+            Text(
+                f"   ⚠ 非交互环境，已自动拒绝工具 {call.name}（如需执行请改用 Web 端审批）",
+                style="yellow",
+            )
+        )
+        return False
+
+    console.print(
+        Text.assemble(
+            ("需要确认：", "bold yellow"),
+            (f"{call.name}({summarize_arguments(call.arguments)})", "bold"),
+        )
+    )
+    try:
+        answer = console.input(Text("允许执行吗？[y/N] ", style="yellow")).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        console.print(Text("   已拒绝。", style="dim"))
+        return False
+    return answer in {"y", "yes", "是"}
 
 
 def print_usage(console: Console, usage: Any, elapsed: float) -> None:
@@ -347,6 +376,8 @@ class ChatSession:
             history=history,
             on_tool_call=lambda call: print_tool_call(self.console, call),
             on_tool_result=lambda call, output: print_tool_result(self.console, call, output),
+            # 是否真正触发审批由 config.tools.require_approval 决定（loop 内部判断）
+            approval_handler=lambda call: ask_tool_approval(self.console, call),
         )
 
     # ---- 操作 -----------------------------------------------------------

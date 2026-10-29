@@ -45,6 +45,11 @@ tools:
   # get_time 是示例工具（README「如何新增一个工具」的模板）：无副作用，不需要配置；
   # 不想要就从本列表里删掉它，代码留着也无害。
   enabled: [read_file, write_file, create_dir, delete_path, move_path, list_dir, get_time]
+  # 危险工具调用前挂起，等人工确认（Web 端黄色审批卡片 / CLI 终端 y/N）。
+  # 默认关闭，避免"复制配置直接跑批量写入"；需要时改成 true。
+  require_approval: false
+  approval_required: [write_file, delete_path, move_path]
+  approval_timeout: 300          # 秒；超时/页面关闭都按「拒绝」处理
   run_shell:
     # 只能填 PATH 中真实存在的可执行文件（如 git、python、rg）。
     # 注意：dir / type / copy 是 cmd 内建命令，ls / cat 在 Windows 上不存在，

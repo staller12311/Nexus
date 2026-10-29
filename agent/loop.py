@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict, dataclass
-from typing import Any, Callable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Collection, Iterator, Mapping, Sequence
 
 from .config import AppConfig
 from .logging_setup import get_logger
@@ -26,7 +26,11 @@ from .provider import ChatResult, Provider, ToolCall, Usage
 from .registry import ERROR_PREFIX, ToolRegistry
 from .storage import Storage
 
-__all__ = ["AgentLoop", "LoopResult", "trim_history"]
+__all__ = ["AgentLoop", "LoopResult", "APPROVAL_REJECTED_MESSAGE", "trim_history"]
+
+#: 审批被拒绝时回灌给模型的工具结果。
+#: 不带「错误：」前缀：拒绝是用户的正常决策，不是程序/工具错误。
+APPROVAL_REJECTED_MESSAGE = "用户已拒绝此操作，工具未执行。"
 
 
 @dataclass(frozen=True)
@@ -119,6 +123,8 @@ class AgentLoop:
         history: Sequence[Mapping[str, Any]] | None = None,
         on_tool_call: Callable[[ToolCall], None] | None = None,
         on_tool_result: Callable[[ToolCall, str], None] | None = None,
+        approval_handler: Callable[[ToolCall], bool] | None = None,
+        approval_required: Collection[str] = (),
         logger: logging.Logger | None = None,
     ) -> None:
         self.provider = provider
@@ -129,6 +135,9 @@ class AgentLoop:
         self.session_id = session_id
         self.on_tool_call = on_tool_call
         self.on_tool_result = on_tool_result
+        #: 人工审批：handler 返回 True 才执行；None 表示不启用（CLI 关闭审批时）
+        self.approval_handler = approval_handler
+        self.approval_required = frozenset(approval_required)
         self._logger = logger or get_logger("agent.loop")
 
         self._messages: list[dict[str, Any]] = [dict(m) for m in (history or [])]
@@ -158,6 +167,7 @@ class AgentLoop:
         history: Sequence[Mapping[str, Any]] | None = None,
         on_tool_call: Callable[[ToolCall], None] | None = None,
         on_tool_result: Callable[[ToolCall, str], None] | None = None,
+        approval_handler: Callable[[ToolCall], bool] | None = None,
     ) -> "AgentLoop":
         return cls(
             provider,
@@ -170,6 +180,11 @@ class AgentLoop:
             history=history,
             on_tool_call=on_tool_call,
             on_tool_result=on_tool_result,
+            approval_handler=approval_handler,
+            # 只有 require_approval 打开时才让 loop 认识「需要审批」的工具
+            approval_required=(
+                config.tools.approval_required if config.tools.require_approval else ()
+            ),
         )
 
     # ---- 只读视图 -------------------------------------------------------
@@ -338,11 +353,12 @@ class AgentLoop:
         for call in tool_calls:
             if self.on_tool_call is not None:
                 self.on_tool_call(call)
-            # 参数解析与校验都发生在这一层（registry.call），失败会返回错误文本
-            output = self.registry.call(call.name, call.arguments)
+            output = self._run_tool(call)
             if self.on_tool_result is not None:
                 self.on_tool_result(call, output)
-            if output.startswith(ERROR_PREFIX):
+            if output == APPROVAL_REJECTED_MESSAGE:
+                self._logger.warning("工具 %s 被用户拒绝，未执行", call.name)
+            elif output.startswith(ERROR_PREFIX):
                 self._logger.warning(
                     "工具 %s 执行返回错误，已把错误文本回灌给模型：%s",
                     call.name,
@@ -351,6 +367,20 @@ class AgentLoop:
             else:
                 self._logger.info("工具 %s 执行完成（%d 字符）", call.name, len(output))
             self._add_message(self.build_tool_message(call, output))
+
+    def _run_tool(self, call: ToolCall) -> str:
+        """执行单个工具；启用审批时先**阻塞**等人工决策。
+
+        审批 handler 返回 False（拒绝 / 超时 / 客户端断开）时不执行工具，
+        把「用户已拒绝此操作」作为 tool 结果回灌 —— 历史仍是合法序列
+        （assistant tool_calls 有对应 tool 消息），模型可以继续解释或换方案。
+        """
+        if self.approval_handler is not None and call.name in self.approval_required:
+            approved = self.approval_handler(call)
+            if not approved:
+                return APPROVAL_REJECTED_MESSAGE
+        # 参数解析与校验都发生在这一层（registry.call），失败会返回错误文本
+        return self.registry.call(call.name, call.arguments)
 
     # ---- 中断处理 -------------------------------------------------------
     def pending_tool_calls(self) -> list[ToolCall]:

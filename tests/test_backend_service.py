@@ -434,3 +434,114 @@ def test_stats_session_scoped_uses_prompt_only_denominator(api) -> None:
 def test_stats_unknown_session_returns_404(api) -> None:
     client, _service, _config = api
     assert client.get("/api/stats?session_id=nope").status_code == 404
+
+# ---------------------------------------------------------------- 人工审批
+class _FakeProvider:
+    """最小 provider 替身：按脚本返回 assistant(tool_calls) → 最终文本。"""
+
+    def __init__(self, script) -> None:
+        self.script = list(script)
+        self.closed = False
+
+    def chat_stream(self, messages, tools=None, **kwargs):
+        step = self.script.pop(0)
+        if step.content:
+            yield {"type": "text", "text": step.content}
+        yield {
+            "type": "done",
+            "content": step.content,
+            "reasoning": None,
+            "tool_calls": step.tool_calls,
+            "usage": step.usage,
+        }
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_approve_unknown_id_returns_404(api) -> None:
+    client, _service, _config = api
+    response = client.post(
+        "/api/chat/approve", json={"approval_id": "ap_missing", "approved": True}
+    )
+    assert response.status_code == 404
+
+
+def test_approve_twice_returns_409(api) -> None:
+    client, service, _config = api
+    pending = service.approvals.open(
+        session_id="s-approve",
+        tool_call_id="call_1",
+        name="write_file",
+        timeout=5,
+    )
+    first = client.post(
+        "/api/chat/approve", json={"approval_id": pending.approval_id, "approved": True}
+    )
+    assert first.status_code == 200
+    assert first.json()["approved"] is True
+    assert pending.gate.wait() is True
+
+    second = client.post(
+        "/api/chat/approve", json={"approval_id": pending.approval_id, "approved": False}
+    )
+    assert second.status_code == 409
+    service.approvals.discard(pending.approval_id)
+
+
+def test_rejected_tool_is_not_executed_but_history_stays_valid(api, monkeypatch) -> None:
+    """服务层串起来：审批拒绝 → 工具不执行 → tool 消息回灌 → 历史合法可继续。"""
+    from agent.provider import ChatResult, ToolCall
+
+    _client, service, config = api
+    service.config.tools.require_approval = True
+    service.config.tools.approval_required = ["write_file"]
+
+    script = [
+        ChatResult(
+            content=None,
+            tool_calls=(
+                ToolCall("call_1", "write_file", '{"path": "blocked.txt", "content": "x"}'),
+            ),
+        ),
+        ChatResult(content="好的，我不写了。"),
+    ]
+    monkeypatch.setattr(service, "_provider_for", lambda name: _FakeProvider(script))
+
+    session = service.create_session("fake")
+    handled: list[str] = []
+
+    def approval(call) -> bool:
+        handled.append(call.name)
+        return False
+
+    events = list(service.chat_stream(session.id, "写个文件", approval_handler=approval))
+    assert handled == ["write_file"]
+    assert any(event["type"] == "message_end" for event in events)
+    assert not (config.workspace_path / "blocked.txt").exists()
+
+    _info, messages = service.get_session(session.id)
+    tool_messages = [
+        message for message in messages if message.get("role") == "tool"
+    ]
+    assert tool_messages[-1]["content"] == "用户已拒绝此操作，工具未执行。"
+    assistant = [message for message in messages if message.get("role") == "assistant"]
+    assert assistant[0]["tool_calls"][0]["id"] == "call_1"
+
+
+def test_optional_dependency_warning(capsys, monkeypatch) -> None:
+    from backend import main as backend_main
+
+    monkeypatch.setattr(
+        backend_main, "check_optional_dependencies", lambda: ["python-docx", "pypdf"]
+    )
+    missing = backend_main.warn_missing_optional_dependencies()
+    captured = capsys.readouterr()
+    assert missing == ["python-docx", "pypdf"]
+    assert "缺少依赖" in captured.err
+    assert "pip install -r requirements.txt" in captured.err
+
+    # 依赖齐全时保持安静
+    monkeypatch.setattr(backend_main, "check_optional_dependencies", lambda: [])
+    assert backend_main.warn_missing_optional_dependencies() == []
+    assert "缺少依赖" not in capsys.readouterr().err
