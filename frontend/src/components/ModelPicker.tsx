@@ -69,6 +69,8 @@ export function ModelPicker({ models, value, onChange, disabled = false }: Props
       <div className="relative">
         <Search className="pointer-events-none absolute left-2 top-2 h-3.5 w-3.5 text-slate-400" />
         <input
+          id="model-search"
+          name="model_search"
           // 输入框**只承载搜索词**：不再显示已选模型，避免"看起来像自动填了一个值"
           value={query}
           onChange={(event) => {

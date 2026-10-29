@@ -190,6 +190,8 @@ export function FolderPickerDialog({
           <div className="flex items-center gap-2">
             <FolderPlus className="h-4 w-4 shrink-0 text-slate-400" />
             <input
+              id="folder-new-name"
+              name="folder-name"
               value={newName}
               onChange={(event) => setNewName(event.target.value)}
               onKeyDown={(event) => {

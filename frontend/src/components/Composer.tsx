@@ -97,6 +97,8 @@ export function Composer() {
         {/* 输入区 + 工具栏 + 底部提示统一收进一张卡片里；卡片之外只有页面背景 */}
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors focus-within:border-sky-400">
           <textarea
+            id="composer-input"
+            name="message"
             ref={textareaRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -149,6 +151,8 @@ export function Composer() {
               </button>
 
               <input
+                id="composer-file-input"
+                name="files"
                 ref={fileRef}
                 type="file"
                 multiple

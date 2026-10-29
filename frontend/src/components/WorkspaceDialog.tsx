@@ -153,6 +153,7 @@ export function WorkspaceDialog({ open, onClose }: { open: boolean; onClose: () 
             </button>
             <input
               id="workspace-input"
+              name="workspace"
               value={value}
               onChange={(event) => {
                 setValue(event.target.value)
@@ -198,6 +199,8 @@ export function WorkspaceDialog({ open, onClose }: { open: boolean; onClose: () 
                 <div className="flex items-center gap-1.5">
                   <span className="font-mono text-xs text-slate-400">@</span>
                   <input
+                    id={`extra-name-${index}`}
+                    name={`extra_name_${index}`}
                     value={row.name}
                     onChange={(event) => updateRow(index, { name: event.target.value })}
                     placeholder="libs"
@@ -206,6 +209,8 @@ export function WorkspaceDialog({ open, onClose }: { open: boolean; onClose: () 
                     className="w-24 rounded border border-slate-200 px-2 py-1 font-mono text-xs outline-none focus:border-sky-400"
                   />
                   <input
+                    id={`extra-path-${index}`}
+                    name={`extra_path_${index}`}
                     value={row.path}
                     onChange={(event) => updateRow(index, { path: event.target.value })}
                     placeholder="D:\SharedLibs"
@@ -233,6 +238,8 @@ export function WorkspaceDialog({ open, onClose }: { open: boolean; onClose: () 
                 </div>
                 <label className="mt-1.5 flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-500">
                   <input
+                    id={`extra-writable-${index}`}
+                    name={`extra_writable_${index}`}
                     type="checkbox"
                     checked={row.writable}
                     onChange={(event) => updateRow(index, { writable: event.target.checked })}

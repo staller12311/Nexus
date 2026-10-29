@@ -72,6 +72,8 @@ export function SystemPromptDialog({ open, onClose }: { open: boolean; onClose: 
         </p>
 
         <textarea
+          id="system-prompt"
+          name="system_prompt"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           rows={6}

@@ -52,6 +52,8 @@ export function SessionList({ sessions, sessionId, onOpen, displayTitle, formatT
               {editing ? (
                 <div className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-1.5 py-1.5">
                   <input
+                    id={`rename-${session.id}`}
+                    name={`rename-${session.id}`}
                     autoFocus
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}

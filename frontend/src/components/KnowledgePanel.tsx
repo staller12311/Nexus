@@ -92,6 +92,8 @@ export function KnowledgePanel() {
             </div>
           </div>
           <input
+            id="kb-file-input"
+            name="files"
             ref={inputRef}
             type="file"
             multiple

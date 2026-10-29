@@ -201,6 +201,8 @@ export function ModelManagerDialog({ open, onClose }: { open: boolean; onClose: 
         <div className="mb-2 text-[11px] font-medium text-slate-500">添加模型</div>
         <div className="space-y-2">
           <input
+            id="model-name"
+            name="model_name"
             value={form.name}
             onChange={onChange('name')}
             disabled={streaming}
@@ -209,6 +211,8 @@ export function ModelManagerDialog({ open, onClose }: { open: boolean; onClose: 
             className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-sky-400"
           />
           <input
+            id="model-base-url"
+            name="base_url"
             value={form.base_url}
             onChange={onChange('base_url')}
             disabled={streaming}
@@ -229,6 +233,8 @@ export function ModelManagerDialog({ open, onClose }: { open: boolean; onClose: 
               />
             ) : (
               <input
+                id="model-id"
+                name="model_id"
                 value={form.model}
                 onChange={onChange('model')}
                 disabled={streaming}
@@ -269,6 +275,8 @@ export function ModelManagerDialog({ open, onClose }: { open: boolean; onClose: 
             </div>
           )}
           <input
+            id="model-api-key"
+            name="api_key"
             value={form.api_key}
             onChange={onChange('api_key')}
             disabled={streaming}
