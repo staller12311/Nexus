@@ -1,13 +1,15 @@
 <div align="center">
 
-# Nexus 智枢
+<h1>Nexus 智枢</h1>
+
+<h3>把大模型变成真正的生产力工具</h3>
+
+<p><b>支持 1M 上下文、本地知识库与代码沙箱的私有化 Agent 中台</b></p>
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
-
-**把大模型变成真正的生产力工具：支持 1M 上下文、本地知识库与代码沙箱的私有化 Agent 中台。**
 
 <img src="./assets/ui-chat.png" alt="Nexus 智枢 - 对话与工具调用界面" width="800" />
 
@@ -15,7 +17,7 @@
 
 </div>
 
-## ✨ 核心特性
+## 核心特性
 
 - ✅ **自研 Agent Loop**：推理/正文双通道流式解析，`tool_calls` 碎片按 index 拼装，不依赖任何 Agent 框架
 - ✅ **多模型热插拔**：任意 OpenAI 兼容端点（DeepSeek / 千问 / Moonshot / 智谱 / Ollama / vLLM），一个 YAML 搞定
@@ -26,7 +28,7 @@
 - ✅ **可观测与成本**：Token/缓存命中率/节省估算、结构化日志与密钥脱敏、会话级统计
 - ✅ **一键启动 / 一键部署**：Windows `start.bat`；Docker Compose 一条命令跑通
 
-## 🏗️ 系统架构
+## 系统架构
 
 ### 总体架构
 
@@ -100,12 +102,12 @@ sequenceDiagram
     Agent-->>BE: SSE: message_end
 ```
 
-## 🎯 为什么选择 Nexus 智枢
+## 为什么选择 Nexus 智枢
 
 - ❌ **市面上的“套壳”方案**：数据直连公网、聊天记录与代码不可控；只能聊天，无法真正执行本地代码；没有沙箱，模型可以随意读写系统文件；危险操作无确认。
 - ✅ **Nexus 智枢**：本地运行保障隐私、数据与 Key 都留在自己机器；手写 Agent Loop，文件 / 命令 / Python 工具链完整可执行；workspace realpath 沙箱 + `@mount` 多根目录挂载；危险操作人工审批，拒绝 / 超时 / 断连都有安全收敛。
 
-## 📁 项目结构
+## 项目结构
 
 ```text
 nexus-zhishu/
@@ -132,7 +134,7 @@ nexus-zhishu/
 └── README.md
 ```
 
-## ⚡ 快速开始
+## 快速开始
 
 **方式 A：Windows 本地一键启动**
 
@@ -157,7 +159,7 @@ docker compose up -d          # 首次构建约 3–5 分钟
 > 如果 workspace 会处理他人代码或不可信输入，请把 `tools.require_approval` 改为 `true`，
 > 危险工具（`run_python_code` / `delete_path` / `run_shell`）将重新走人工审批。
 
-## 🧑‍💻 手动安装（开发模式）
+## 手动安装（开发模式）
 
 适合想改代码 / 跑测试的开发者。
 
@@ -426,9 +428,9 @@ python -m agent config check    # 打印将要使用的配置；密钥缺失时�
 ```
 
 <details>
-<summary><b>🧪 测试与质量</b>（点击展开）</summary>
+<summary><b>测试与质量</b>（点击展开）</summary>
 
-## 测试
+**测试**
 
 ```bash
 .venv\Scripts\python.exe -m pytest -q
@@ -446,14 +448,14 @@ python -m agent config check    # 打印将要使用的配置；密钥缺失时�
 </details>
 
 <details>
-<summary><b>🧰 如何新增一个工具（扩展开发）</b>（点击展开）</summary>
+<summary><b>如何新增一个工具（扩展开发）</b>（点击展开）</summary>
 
-## 如何新增一个工具
+**如何新增一个工具**
 
 下面是**真的加进去了**的一个最小工具 `get_time`：只依赖标准库、无副作用（不碰文件、网络、命令），
 可以直接当模板照抄。完整步骤一共改 5 个地方，最后跑两条命令验证。
 
-### 第 1 步：写工具函数（`agent/tools/time.py`）
+**第 1 步：写工具函数（`agent/tools/time.py`）**
 
 ```python
 # agent/tools/time.py —— 完整代码
@@ -476,7 +478,7 @@ def get_time(zone: str = "UTC") -> str:
 约定：**返回值必须是字符串**（要返回 dict/list 会被自动 `json.dumps`）；参数非法、资源不存在这类
 「可预期失败」抛 `ToolError`，registry 会把它变成 `错误：…` 文本回灌给模型，主循环不会崩。
 
-### 第 2 步：导出（`agent/tools/__init__.py`）
+**第 2 步：导出（`agent/tools/__init__.py`）**
 
 ```python
 from .time import get_time
@@ -484,7 +486,7 @@ from .time import get_time
 __all__ = [..., "get_time"]
 ```
 
-### 第 3 步：在 registry 注册并给出 JSON Schema（`agent/registry.py`）
+**第 3 步：在 registry 注册并给出 JSON Schema（`agent/registry.py`）**
 
 ```python
 # build_registry() 的 builders 字典里加一项
@@ -503,7 +505,7 @@ Schema 三件事别省：**每个参数写死 `type` 与 `description`**、**`re
 （哪怕是空的）、`additionalProperties: false`（`_object_schema()` 已带上）。
 这样模型不会猜错类型，也不会多传字段。
 
-### 第 4 步：把名字加进白名单（`agent/config.py` 的 `KNOWN_TOOLS`）
+**第 4 步：把名字加进白名单（`agent/config.py` 的 `KNOWN_TOOLS`）**
 
 ```python
 KNOWN_TOOLS = ("read_file", "write_file", "list_dir", "run_shell", "http_get", "get_time")
@@ -511,7 +513,7 @@ KNOWN_TOOLS = ("read_file", "write_file", "list_dir", "run_shell", "http_get", "
 
 不加进这里，配置里写 `get_time` 会被校验直接拒掉（`存在未知工具名 [...]`）。
 
-### 第 5 步：在 `config.yaml` 里启用
+**第 5 步：在 `config.yaml` 里启用**
 
 ```yaml
 tools:
@@ -522,7 +524,7 @@ tools:
 > 「说明」文字表，新增工具要跟着加一行，否则 `tools list` 的说明列是空的。
 > （这是当前实现的一个小瑕疵：说明文字没有和 registry 放在一起。已记在设计决策里。）
 
-### 验证（真实输出）
+**验证（真实输出）**
 
 ```console
 $ python -m agent tools list
@@ -542,7 +544,7 @@ $ python -m agent run 现在几点了
    tokens: prompt=20 completion=10 total=30  用时 0.1s
 ```
 
-### 这个示例工具保留还是删除？
+**这个示例工具保留还是删除？**
 
 **保留**：代码留在 `agent/tools/time.py`，并且**默认启用**（`config.example.yaml` 与
 `ToolsConfig` 的默认值里都有 `get_time`）—— 它无副作用、不需要配置，正好当模板。
@@ -586,9 +588,9 @@ cd frontend && npm run dev                            # http://localhost:5173
 日志：`data/backend.log`、`data/backend.err.log`、`data/frontend.log`、`data/frontend.err.log`。
 
 <details>
-<summary><b>📡 REST 端点</b>（点击展开）</summary>
+<summary><b>REST 端点</b>（点击展开）</summary>
 
-### REST 端点
+**REST 端点**
 
 | 方法 | 路径 | 请求体 | 响应 |
 |---|---|---|---|
@@ -631,9 +633,9 @@ cd frontend && npm run dev                            # http://localhost:5173
 </details>
 
 <details>
-<summary><b>📨 SSE 事件协议</b>（点击展开）</summary>
+<summary><b>SSE 事件协议</b>（点击展开）</summary>
 
-### SSE 事件协议
+**SSE 事件协议**
 
 每帧都是 `data: <JSON>\n\n`：
 
@@ -788,9 +790,9 @@ cd frontend && npm run test
    `threads` 用 worker_threads，不 spawn。
 
 <details>
-<summary><b>✅ 交付清单</b>（点击展开）</summary>
+<summary><b>交付清单</b>（点击展开）</summary>
 
-## 交付清单
+**交付清单**
 
 验收标准第 7 条要求 README 覆盖安装、配置、用法与扩展方式，逐项对照：
 
@@ -834,9 +836,9 @@ Web 界面（第一阶段 CLI 之外的增量交付）：
 </details>
 
 <details>
-<summary><b>🧭 已知待办</b>（点击展开）</summary>
+<summary><b>已知待办</b>（点击展开）</summary>
 
-## 已知待办
+**已知待办**
 
 - `agent/cli.py::render_tools_table()` 的工具说明表与 `registry.py` 的 `ToolSpec.description` 是两份
   （README 第 32 条），新增工具要改两处。
@@ -844,9 +846,9 @@ Web 界面（第一阶段 CLI 之外的增量交付）：
 </details>
 
 <details>
-<summary><b>🧱 已清偿的技术债</b>（点击展开）</summary>
+<summary><b>已清偿的技术债</b>（点击展开）</summary>
 
-## 已清偿的技术债
+**已清偿的技术债**
 
 - **密钥环境变量的测试隔离**：`tests/conftest.py` 的 autouse fixture `isolate_secret_env`
   在每个用例前统一删掉 `*_API_KEY` / `*_TOKEN` / `*_SECRET` / `*_PASSWORD` / `*_ACCESS_KEY`
@@ -860,31 +862,31 @@ Web 界面（第一阶段 CLI 之外的增量交付）：
 </details>
 
 <details>
-<summary><b>📚 设计决策（68 条）</b>（点击展开）</summary>
+<summary><b>设计决策（68 条）</b>（点击展开）</summary>
 
-## 设计决策
+**设计决策**
 
 本任务未规定或存在歧义的地方，一律取最简单可行方案，记录如下。
 
-### 1. 所有相对路径以「配置文件所在目录」为基准
+**1. 所有相对路径以「配置文件所在目录」为基准**
 
 `workspace` / `db_path` / `logging.file` / `system_prompt_file` 这些相对路径
 解析基准是**配置文件所在目录**，不是当前工作目录。这样无论从哪个目录启动
 （`cd D:\MyAi` 还是 `cd C:\`），指向的都是同一套 workspace / 数据库 / 日志，行为可复现。
 `AppConfig.resolve_path()` 是唯一的解析入口。
 
-### 2. 配置中的未知字段直接报错
+**2. 配置中的未知字段直接报错**
 
 pydantic 模型使用 `extra="forbid"`。像 `max_tool_round`（少写一个 s）这类拼写错误
 会立刻报错并指出字段，而不是被静默忽略、然后在运行时表现为「配置没生效」。
 
-### 3. 这些字段的默认值
+**3. 这些字段的默认值**
 
 出于「缺失即报错，多余即报错」的取向，只有 `default_model`、`models` 及其内部的
 `base_url` / `model` / `api_key_env` 是必填；其余都给了与 `config.example.yaml`
 一致的默认值，便于最小配置先跑起来。
 
-### 4. P0 阶段固定非流式（`stream: false`）
+**4. P0 阶段固定非流式（`stream: false`）**
 
 `agent.stream` 只接受 `false`，配成 `true` 会校验失败。理由：
 
@@ -902,18 +904,18 @@ rich 只负责把**已完整拿到的回复分块打印**（按段落/换行输�
 > 主循环不再同时兼容两种形态。`agent.stream` 字段已随之**删除**（配置里再写 `stream`
 > 会按未知字段报错，见第 3 条的 `extra="forbid"`）。
 
-### 5. 密钥只以「环境变量名」出现在配置里
+**5. 密钥只以「环境变量名」出现在配置里**
 
 配置里写的是 `api_key_env: DEEPSEEK_API_KEY`，真实值只存在于 `.env` 或系统环境变量。
 `ModelConfig` 不保存密钥值；`api_key()` 每次现读，缺失时报错只提变量名、绝不回显内容。
 日志层另有脱敏 Formatter（见第 9 条）。
 
-### 6. python-dotenv 只在真有 `.env` 时才是硬依赖
+**6. python-dotenv 只在真有 `.env` 时才是硬依赖**
 
 `agent/config.py` 对 `dotenv` 做受保护导入。没有 `.env` 时用真实环境变量正常跑；
 **存在 `.env` 但没装 python-dotenv 时直接报错**并提示安装，绝不静默忽略用户写的 `.env`。
 
-### 7. openai 3.x 的 HTTP 栈是 httpx2，respx 对它无效
+**7. openai 3.x 的 HTTP 栈是 httpx2，respx 对它无效**
 
 本环境实测（`openai 3.37.0` / `httpx2 2.16.0`）：
 
@@ -930,14 +932,14 @@ rich 只负责把**已完整拿到的回复分块打印**（按段落/换行输�
 
 已移除 respx，测试不依赖任何 HTTP 拦截库。
 
-### 8. TLS 走系统信任存储
+**8. TLS 走系统信任存储**
 
 `pip show httpx2` → `Requires: ..., truststore, ...`。httpx2 用 Python 标准库 `ssl`
 配合 **truststore** 读取操作系统信任存储（Windows 证书管理器 / macOS Keychain /
 Linux 系统 CA），因此企业自签根证书、公司代理签发的证书无需额外配置即可被信任，
 不依赖 certifi 打包的 CA 列表。
 
-### 9. 日志脱敏
+**9. 日志脱敏**
 
 `agent/logging_setup.py` 用自定义 Formatter 对**最终格式化后的整行**做脱敏：
 凡是环境变量名匹配 `api_key / token / secret / password / authorization` 的值，
@@ -947,13 +949,13 @@ Linux 系统 CA），因此企业自签根证书、公司代理签发的证书�
 `force_utf8_stdio()` 把 stdout/stderr 切到 UTF-8：Windows 默认代码页（936）下
 中文日志和中文报错会变成乱码，与其让用户手动设 `PYTHONIOENCODING`，不如在进程内解决。
 
-### 10. 持久化用标准库 sqlite3，消息按「OpenAI API 形状」存取
+**10. 持久化用标准库 sqlite3，消息按「OpenAI API 形状」存取**
 
 不引入 ORM。`messages` 表按 `(session_id, seq)` 唯一，`tool_calls` 序列化为 JSON 文本，
 读回来就是能直接扔给 OpenAI SDK 的 dict，避免在存储层和模型层之间来回翻译。
 `get_messages(limit=n)` 返回的是**最近 n 条**且按时间升序——历史裁剪要的正是这个语义。
 
-### 11. 会话顺序用逻辑序号（`updated_seq`），不用墙钟
+**11. 会话顺序用逻辑序号（`updated_seq`），不用墙钟**
 
 最初用 `ORDER BY updated_at DESC` 排序，结果偶发失败。实测原因：**Windows 墙钟粒度约 15.6ms**
 —— 连续调用 `datetime.now(timezone.utc)` 200 次只得到 **1 个不同取值**，同一批操作的时间戳完全相同，
@@ -963,7 +965,7 @@ Linux 系统 CA），因此企业自签根证书、公司代理签发的证书�
 `MAX(updated_seq)+1`；排序一律 `ORDER BY updated_seq DESC, rowid DESC`。时间戳只用于展示。
 旧库打开时自动 `ALTER TABLE` 补列并按 `rowid` 回填。
 
-### 12. 重试策略：`_raw_call` 是纯传输层，分类与退避在外层
+**12. 重试策略：`_raw_call` 是纯传输层，分类与退避在外层**
 
 `Provider._raw_call()` 只负责发请求：成功原样返回 SDK 响应，失败原样抛 SDK 异常，
 **不做任何分类**。分类（`translate_exception`）与退避（`_call_with_retry`）都在外层，
@@ -983,7 +985,7 @@ Linux 系统 CA），因此企业自签根证书、公司代理签发的证书�
   `max_retries: 3` 即最多 4 次尝试。
 - 非 SDK 异常（自己代码的 `TypeError` 等）原样抛出，不会被伪装成 provider 错误。
 
-### 13. 408 作为瞬态超时主动纳入重试（规格只列了 429/5xx）
+**13. 408 作为瞬态超时主动纳入重试（规格只列了 429/5xx）**
 
 任务规格写的是「429/5xx 才退避」。实现上**主动把 HTTP 408 也纳入可重试**，并归类为
 `ProviderTimeoutError`（与客户端侧 `APITimeoutError` 同类）：408 在语义上就是「请求超时」，
@@ -993,7 +995,7 @@ Linux 系统 CA），因此企业自签根证书、公司代理签发的证书�
 `backoff_base/backoff_max`，不看错误类型，因此 408 与 500 在同一尝试次数下等待时间相同
 （测试 `test_408_backoff_matches_5xx_backoff` 固定了这一点）。
 
-### 14. `run_shell` 默认禁用且默认空白名单；白名单只接受 PATH 中的真实可执行文件
+**14. `run_shell` 默认禁用且默认空白名单；白名单只接受 PATH 中的真实可执行文件**
 
 早期示例里写的 `allowed_commands: [dir, ls, pwd, cat, type]` 是错的：
 `dir` / `type` 是 Windows `cmd` 的**内建命令**，`ls` / `cat` 在 Windows 上并不存在；
@@ -1010,7 +1012,7 @@ Linux 系统 CA），因此企业自签根证书、公司代理签发的证书�
 `split_command()` 刻意不用 `shlex`：`posix=True` 会把 `C:\tmp\x.py` 的反斜杠当转义符吃掉，
 `posix=False` 又会把引号留在参数里，两者在 Windows 上都有坑。这里只处理引号分组。
 
-### 15. workspace 越界校验：先 `resolve()` 再 `is_relative_to()`
+**15. workspace 越界校验：先 `resolve()` 再 `is_relative_to()`**
 
 顺序不可颠倒：
 
@@ -1030,7 +1032,7 @@ Windows 上 `is_relative_to()` 做大小写归一，因此 `read_file("C:\WS\a.t
 `list_dir()` 会对每个子项做同样的检查并标注「符号链接或目录联接指向 workspace 外」——
 **文件和目录都要标**：目录联接最容易在列表里被忽略（该遗漏由测试暴露并修复）。
 
-### 16. `http_get` 白名单与重定向
+**16. `http_get` 白名单与重定向**
 
 - 默认 `allowed_domains: []` → 拒绝一切请求；且 `http_get` 不在 `tools.enabled` 默认值里；
 - 只允许 http/https 的 GET；
@@ -1040,7 +1042,7 @@ Windows 上 `is_relative_to()` 做大小写归一，因此 `read_file("C:\WS\a.t
   因此自定义 `RedirectHandler` 对每个跳转目标重新过白名单；
 - 用标准库 `urllib.request` 实现，不引入额外依赖。
 
-### 17. 工具 Schema 写死，参数在本地校验
+**17. 工具 Schema 写死，参数在本地校验**
 
 `registry.py` 为每个工具声明的 `parameters` 都满足：`type: object`、
 每个属性都有明确的 `type` 与 `description`、`required` 显式列出（即使是空列表）、
@@ -1051,7 +1053,7 @@ Windows 上 `is_relative_to()` 做大小写归一，因此 `read_file("C:\WS\a.t
 字符串要用双引号」+ 该工具的 schema）。工具抛 `ToolError`（越界、白名单拒绝…）同样转成
 `错误：…` 文本回灌给模型，让模型自己纠正；只有工具内部的意外异常会记日志并提示模型别重复调用。
 
-### 18. 符号链接用例的环境差异（本机 2 条 skip 的原因）
+**18. 符号链接用例的环境差异（本机 2 条 skip 的原因）**
 
 `tests/test_tools_security.py` 里与链接相关的用例：
 
@@ -1067,7 +1069,7 @@ Windows 上 `is_relative_to()` 做大小写归一，因此 `read_file("C:\WS\a.t
 
 清理链接一律用 `os.rmdir()` 只摘链接本身，不用 `rmtree` 递归 —— 见第 19 条。
 
-### 19. 链接清理用 `os.rmdir`，不依赖 `rmtree`
+**19. 链接清理用 `os.rmdir`，不依赖 `rmtree`**
 
 测试里创建的链接全部位于 pytest 的 `tmp_path` 下，并由 autouse fixture 用 `os.rmdir()`
 显式清理（`unlink_link()`：真符号链接走 `unlink`，目录联接走 `rmdir`）。
@@ -1079,7 +1081,7 @@ Windows 上 `is_relative_to()` 做大小写归一，因此 `read_file("C:\WS\a.t
 ——只移除重解析点，绝不会进目标。有一条用例专门固定这一点
 （`test_link_cleanup_removes_only_the_link`）。
 
-### 20. 历史裁剪按「消息组」，不按条数
+**20. 历史裁剪按「消息组」，不按条数**
 
 OpenAI 要求每条 `role="tool"` 前面必须有对应的 `assistant`（带 `tool_calls`）。
 若按条数从后往前保留 N 条，很容易把那个 assistant 切掉、留下孤立 tool 消息，下一轮请求直接 400。
@@ -1093,7 +1095,7 @@ OpenAI 要求每条 `role="tool"` 前面必须有对应的 `assistant`（带 `to
 - 退化情形（最后一组本身就超限，例如 `max_history_messages` 配得极小）：**宁可略微超限也保留整组**，
   否则会发出只有 system 的空请求。
 
-### 21. assistant 消息原样回填；tool content 必须是字符串
+**21. assistant 消息原样回填；tool content 必须是字符串**
 
 - 带 `tool_calls` 的 assistant 消息形如
   `{"role":"assistant","content":None,"tool_calls":[{"id":…,"type":"function","function":{"name":…,"arguments":<原始字符串>}}]}`：
@@ -1112,7 +1114,7 @@ OpenAI 要求每条 `role="tool"` 前面必须有对应的 `assistant`（带 `to
 | 多个 `tool_calls` 按 id 顺序回填、不串号 | `test_two_tool_calls_are_not_swapped_by_id`（id=a/b，两文件内容不同）<br>`test_full_loop_two_tool_calls_match_by_id`（真实 HTTP 链路，抓线上请求体） | `_execute_tool_calls` 改成反序遍历 | `assert ['b','a'] == ['a','b']` → FAILED |
 | `arguments` 逐字符原样透传 | `test_arguments_are_passed_verbatim_to_next_request`（`'{"x": 1, "y":2}'`）<br>`test_full_loop_arguments_verbatim_on_the_wire` | `build_assistant_message` 改成 `json.dumps(json.loads(...))` | `assert '{"x": 1, "y": 2}' == '{"x": 1, "y":2}'` → FAILED（3 条用例同时捕获） |
 
-### 22. `max_tool_rounds` 的语义：拦住第 N+1 轮请求，而不是打断第 N 轮
+**22. `max_tool_rounds` 的语义：拦住第 N+1 轮请求，而不是打断第 N 轮**
 
 判定点在**循环顶部**：已经执行完 N 轮工具调用、正准备发起第 N+1 轮请求时发现超限 →
 不再请求，返回 `LoopResult(tool_limit_reached=True)` 并给出「已达工具调用上限（N 轮）」。
@@ -1121,7 +1123,7 @@ OpenAI 要求每条 `role="tool"` 前面必须有对应的 `assistant`（带 `to
 序列合法。绝不出现「assistant 带了 tool_calls 但 tool 结果没回填」就退出。
 这条提示只返回给调用方，不写进历史（否则会插入一条并非模型产出的 assistant 消息）。
 
-### 23. usage 逐轮累加并落库
+**23. usage 逐轮累加并落库**
 
 每轮 `Provider.chat()` 的 `usage` 都用 `Usage.__add__` 累加到本次 `run()` 的返回值，
 同时**立即**通过 `Storage.add_usage()` 累加到会话记录（`sessions` 表的
@@ -1156,7 +1158,7 @@ $ python -m agent --config cfg_tool_b.yaml sessions resume ba877c46
 message 角色序列: ['system', 'user', 'assistant', 'tool', 'assistant', 'user']
 ```
 
-### 24. rich 只负责「已经完整拿到的回复」的分段打印
+**24. rich 只负责「已经完整拿到的回复」的分段打印**
 
 CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环内部走 `run_stream`，但 `run()`
 只返回最终结果），rich 的职责只是渲染：
@@ -1166,7 +1168,7 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
   `[red]...[/red]`、`[not-a-tag]` 会被当成富文本标记（轻则变色，重则抛异常）；
   自己的提示文案才用 markup 上色。
 
-### 25. Ctrl+C 只中断当前请求，不退出程序（含一个真实进程才暴露的坑）
+**25. Ctrl+C 只中断当前请求，不退出程序（含一个真实进程才暴露的坑）**
 
 - 提示符处中断：捕获后打印「已中断（不会退出）」，回到提示符；
 - 请求进行中中断：`run_turn` 捕获后调用 `loop.abort_pending_tool_calls()`，
@@ -1194,7 +1196,7 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 而提示符 `你 > ` 没有换行、总量又小，于是输出要等子进程退出才交付 —— 看起来就像「子进程静默」。
 正确做法是用二进制管道 + `read1()`（有多少返回多少）。
 
-### 26. 表格列宽是实测出来的，不是拼出来的
+**26. 表格列宽是实测出来的，不是拼出来的**
 
 `rich` 在内容总宽超过终端时会把列压扁：最初 `sessions list` 在 80 列终端下
 **id 列整列消失**、`models list` 显示成 `mo…`。实测各布局的「表格最小宽度」后发现
@@ -1209,7 +1211,7 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 有回归用例固定「80 列下每行 ≤ 80、id 列不得消失」。**注意第 31 条的教训**：
 列宽必须拿「最长的真实数据」测，短样例测不出 `no_wrap` 列的最小宽度问题。
 
-### 27. 退出码约定
+**27. 退出码约定**
 
 | 退出码 | 含义 |
 |---|---|
@@ -1221,7 +1223,7 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 `config check` 把「密钥是否已设置」也当作检查项：即使 `api_key_env` 未设置也会先打印完整配置表
 （方便排查），随后把错误写到 **stderr** 并返回 1。
 
-### 28. 会话短 id：列表显示 8 位，show/resume 支持唯一前缀
+**28. 会话短 id：列表显示 8 位，show/resume 支持唯一前缀**
 
 `sessions list` 的 id 列只显示 8 位（12 位放不下 80 列），但真实手测发现用户会直接把它复制给
 `sessions show` —— 于是 `Storage.find_session()` 支持「完整 id 或唯一前缀」：精确命中优先，
@@ -1231,13 +1233,13 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 **输入保护**：空串 / 纯空白**直接报错「请提供会话 id（不能为空）」，不进前缀匹配** ——
 否则 `LIKE '' || '%'` 会匹配到所有会话，可能悄悄打开一个完全无关的会话。有空串用例固定这一点。
 
-### 29. `force_utf8_stdio()` 连 stdin 一起设置
+**29. `force_utf8_stdio()` 连 stdin 一起设置**
 
 最初只设了 stdout/stderr。真实手测 `echo 你好 | python -m agent chat` 时中文变乱码：
 **管道输入**时 Python 用本地代码页（936）解码，而真实终端走 PEP 528 本来就是 UTF-8。
 现在 stdin/stdout/stderr 三者都显式切到 UTF-8。
 
-### 30. `--config` / `--model` 放在子命令前后都能用
+**30. `--config` / `--model` 放在子命令前后都能用**
 
 最初它们只挂在顶层解析器上，于是 `agent run "你好" --config x.yaml` 直接
 `error: unrecognized arguments`（退出码 2）—— 用户按习惯把选项写在后面必然踩坑。
@@ -1245,7 +1247,7 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 子解析器默认值用 `SUPPRESS` 以免覆盖父级已解析到的值。有两条用例分别覆盖 `--config`
 与 `--model` 的后置写法，并断言后置的配置**真的生效**（指向另一个库时会话列表为空）。
 
-### 31. `models list` 不把 `base_url` 放进表格
+**31. `models list` 不把 `base_url` 放进表格**
 
 第 26 条只测了短名字（`mock`/`alt`/`nokey`），于是漏掉了一个真问题：**`no_wrap` 列的
 「最小宽度」等于它最长内容的宽度** —— 一旦有 `https://dashscope.aliyuncs.com/compatible-mode/v1`
@@ -1261,7 +1263,7 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 
 教训：列宽不能只拿短样例测；要拿「最长的真实数据」测。
 
-### 32. 已知瑕疵：工具说明文字有两份
+**32. 已知瑕疵：工具说明文字有两份**
 
 `tools list` 的「说明」列取自 `agent/cli.py::render_tools_table()` 里的一张手写表，
 而工具的**真实描述**在 `agent/registry.py` 的 `ToolSpec.description` 里 —— 新增工具要改两处，
@@ -1271,7 +1273,7 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 拿不到 `ToolSpec`。干净的修法是把「工具名 → 描述」抽成 registry 里的单一常量表，
 `build_registry()` 与 CLI 都从它取；这属于结构调整，留到下次改动时做。
 
-### 33. `get_time` 默认启用是对原始规格默认值的**主动扩展**
+**33. `get_time` 默认启用是对原始规格默认值的**主动扩展****
 
 原始规格给的 `tools.enabled` 默认值是 `[read_file, write_file, list_dir]`。
 本实现把它扩成 `[read_file, write_file, list_dir, get_time]` —— 这是**主动扩展，不是规格要求**，
@@ -1287,7 +1289,7 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 - **与规格的一致性**：`read_file` / `write_file` / `list_dir` 的默认启用没有变化；
   `run_shell` / `http_get` 依然默认不启用、默认空白名单（第 14、16 条）。
 
-### 34. `text_delta` 是「增量」语义，**现在已经是真流式逐 token**
+**34. `text_delta` 是「增量」语义，**现在已经是真流式逐 token****
 
 前端**必须**增量消费：收到一个 `text_delta` 就把它 append 到当前 assistant 消息的
 `content` 上并立即重渲染，**不要**攒着等 `message_end` 一次性显示。
@@ -1296,7 +1298,7 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 后端换成 `provider.chat_stream()`（`stream=True`）逐 token 推送，事件结构与顺序不变，
 **前端确实零改动**（只加了一个 `reasoning_delta` 分支）——当初的预判兑现了。
 
-### 35. SSE 断开的语义：跑完、落库、只丢事件流
+**35. SSE 断开的语义：跑完、落库、只丢事件流**
 
 `POST /api/chat/stream` 里同步的 `service.chat()` 跑在 `asyncio.to_thread` 的工作线程里。
 客户端断开（关标签页、刷新、断网）时：**SSE 生成器结束，但线程里的这一轮会继续跑完**，
@@ -1306,7 +1308,7 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 成本是这一轮的 token 照常花掉。第一版明确接受这个行为（不做取消/中断按钮）。
 `anyio`/`asyncio.to_thread` 不提供杀掉线程的手段，这也与「不强杀正在执行工具」的取舍一致。
 
-### 36. 实时流只推最终回答（C），中间文本只在重载后可见
+**36. 实时流只推最终回答（C），中间文本只在重载后可见**
 
 一次多轮工具调用的形态是 `A(带 tool_calls) → 工具 → B(带 tool_calls) → 工具 → C(最终)`。
 `LoopResult.content` 只有 C，所以 SSE 也只推 C 的 `text_delta`；A、B 的文字不进实时流，
@@ -1317,7 +1319,7 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 即「直播只推 C，回看能看到 A/B」。要消除它需要给循环再加一个「assistant 文本」回调，
 属于对 `agent/` 的改动，不在本次范围。
 
-### 37. `/api/chat/stream` 用「1 个长连接 + 1 个短查询」，不为字面「单连接」牺牲 404 预检
+**37. `/api/chat/stream` 用「1 个长连接 + 1 个短查询」，不为字面「单连接」牺牲 404 预检**
 
 - **长连接**：整轮对话（含里面多轮工具调用）只有 1 个 `Storage`，在
   `AgentService.chat()` 的 `with self._storage()` 里创建、由同一个 `with` 的 `finally` 关闭；
@@ -1329,7 +1331,7 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 - 为什么不把路由里那个 `Storage` 传进工作线程复用：`agent/storage.py` 的 sqlite 连接是默认的
   `check_same_thread=True`，跨线程用会抛 `ProgrammingError`；要改就得动 `agent/`，而那是红线。
 
-### 38. 前端用 `fetch` + `ReadableStream` 消费 SSE，不用 `EventSource`
+**38. 前端用 `fetch` + `ReadableStream` 消费 SSE，不用 `EventSource`**
 
 `EventSource` 只支持 GET、不能带请求体，而我们的 `/api/chat/stream` 是 POST + JSON body，
 所以手写解析：`response.body.getReader()` + `TextDecoder`，用 **buffer 字符串**拼接后按 `\n\n` 切帧。
@@ -1341,14 +1343,14 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 只有集成测试用 `VITE_API_BASE` 指到真实后端。这条是集成测试逼出来的真实修复：
 最初 `api/client.ts` 写死相对路径，在 Node 里直接 `Failed to parse URL`。
 
-### 39. `streaming` 状态的兜底复位
+**39. `streaming` 状态的兜底复位**
 
 `sendMessage` 的 `try/finally` 里无条件 `finishMessage()`：无论正常结束、后端 500、网络异常，
 还是流中途断掉（没收到 `message_end`），`streaming` 一定会回到 false —— 否则输入框会永久禁用。
 刷新页面后重新拉的会话里，没有拿到结果的工具卡片由 `lib/reconstruct.ts` 标成**失败**
 （而不是永远转圈），因为「重新打开时它确实没有结果」。
 
-### 40. 历史消息还原：纯函数 `reconstructMessages()`，卡片默认 success
+**40. 历史消息还原：纯函数 `reconstructMessages()`，卡片默认 success**
 
 后端存的是 OpenAI 原生格式：`assistant(tool_calls=[...])` 紧跟若干条 `role="tool"`。
 `src/lib/reconstruct.ts::reconstructMessages()` 负责把它们合并成 UI 结构
@@ -1362,7 +1364,7 @@ CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环�
 把它显示成绿色的「成功」会掩盖失败。如果你要求严格全部 success，改
 `reconstruct.ts` 里的那三行即可。
 
-### 41. 标题兜底的取数放后端，展示决策放前端
+**41. 标题兜底的取数放后端，展示决策放前端**
 
 「`title` 为空就用第一条 user 消息」需要那条第消息，而 `GET /api/sessions` 原本只返回会话元数据。
 若让浏览器对每个会话再请求一次详情，就是 N+1。所以：后端在列表里补一个
@@ -1384,7 +1386,7 @@ WHERE m.session_id IN (?, ...) AND m.role = 'user'
 之所以不往 `agent/storage.py` 加「取前 N 条」的方法，是因为那是红线（`agent/` 零改动）；
 如果将来允许改 `agent/`，这个查询应该下沉成 `Storage.first_user_messages()`。
 
-### 42. 系统提示词存在库里的那条 `system` 消息上，PATCH 直接改它
+**42. 系统提示词存在库里的那条 `system` 消息上，PATCH 直接改它**
 
 `AgentLoop.__init__` 的行为是：**历史里已经有 `system` 消息时，就用历史里那条，不再用配置里的默认提示词**。
 所以「让新提示词立刻生效」最直接的办法就是改库里那条 `system` 消息，
@@ -1403,7 +1405,7 @@ WHERE m.session_id IN (?, ...) AND m.role = 'user'
 连接 `timeout=10`，撞锁时等而不是立刻失败，不会打断正在跑的 loop。
 验证脚本：`tools/verify_system_prompt.py`（UPDATE / INSERT / 空串 / 404 / 空串不动 五条路径 + `journal_mode` 实测）。
 
-### 43. 重命名与删除：复用 `Storage` 的方法，删除靠外键级联
+**43. 重命名与删除：复用 `Storage` 的方法，删除靠外键级联**
 
 - `PATCH /api/sessions/{id}` 直接调 `Storage.rename_session()`（它顺带更新 `updated_at`/`updated_seq`，
   会话因此会跳到列表最前，符合"刚改过"的直觉）；标题会 `strip()`，**空串表示清空**，
@@ -1415,7 +1417,7 @@ WHERE m.session_id IN (?, ...) AND m.role = 'user'
 - 前端删除**一定**经过二次确认弹窗；`streaming` 时额外提示"AI 正在回答，删除可能丢失这一轮结果"。
   删除的是当前会话时，同时清空 `messages` / `systemPrompt` / `sessionId`，避免主区显示已删会话的残影。
 
-### 44. 自定义模型：backend 自己一张表 + 继承 `ModelConfig` 组装 Provider
+**44. 自定义模型：backend 自己一张表 + 继承 `ModelConfig` 组装 Provider**
 
 **为什么不改 `agent/`**：`Provider.__init__(model_config, ...)` 只依赖 `ModelConfig` 的
 `base_url / model / api_key() / temperature / max_tokens`。所以在 `backend/service/model_runtime.py`
@@ -1439,7 +1441,7 @@ WHERE m.session_id IN (?, ...) AND m.role = 'user'
 前端会对 `api_key/base_url/name/model` 做 `trim()`（粘贴常带空格），
 并在 `streaming` 时禁用模型下拉框与删除，避免 SSE 流被中途切断。
 
-### 45. 自动起标题：独立接口 + 短超时 + 静默降级，绝不阻塞主对话
+**45. 自动起标题：独立接口 + 短超时 + 静默降级，绝不阻塞主对话**
 
 **为什么不放在 `chat/stream` 里做完**：主对话的 SSE 必须尽快收尾。标题是"锦上添花"的，
 所以做成的是一次**独立请求**：前端在 `message_end` 之后 `void generateTitle(sessionId)`
@@ -1458,7 +1460,7 @@ WHERE m.session_id IN (?, ...) AND m.role = 'user'
 **前端降级**：`generateTitle` 里 `try/catch` 全吞，失败不碰 `error` 状态、不弹 ErrorBanner；
 成功则就地更新列表标题并静默刷新。只在**首轮**（发送前 `messages.length === 0`）触发。
 
-### 46. 拉取模型列表：一次只读请求，Key 不落库；UI 成功才变下拉框
+**46. 拉取模型列表：一次只读请求，Key 不落库；UI 成功才变下拉框**
 
 `POST /api/models/fetch` 由**用户点击**触发，后端代发一次 `GET {base_url}/models`（`httpx`，10s 超时）：
 
@@ -1474,7 +1476,7 @@ WHERE m.session_id IN (?, ...) AND m.role = 'user'
   并提供「手动输入 Model ID」切回；失败只显示一条琥珀色提示，**输入框原样保留**，
   绝不卡死。改了 Base URL 会让已拉到的列表失效（避免选到另一个端点的模型 id）。
 
-### 47. 模型选择器：自己写可搜索下拉 + 过滤非纯文本模型 + 主流优先排序
+**47. 模型选择器：自己写可搜索下拉 + 过滤非纯文本模型 + 主流优先排序**
 
 DashScope 的 `/models` 返回 **182 个**模型，其中 40 个是 audio / image / tts / vision /
 realtime / embedding / speech / ocr，根本不能用于纯文本对话；剩下 142 个用原生 `<select>`
@@ -1496,7 +1498,7 @@ realtime / embedding / speech / ocr，根本不能用于纯文本对话；剩下
 前 8 项为 `qwen-max | qwen-max-longcontext | qwen-max-1201 | qwen-max-0107 | qwen-plus |
 qwen-plus-2025-12-01 | qwen-plus-2025-11-05 | qwen-plus-2025-01-25`；搜 `flash` 得到 28 个纯文本 flash 模型。
 
-### 48. 真流式 + 思维链（reasoning）：单一流式核心，`run()` 只是收集器
+**48. 真流式 + 思维链（reasoning）：单一流式核心，`run()` 只是收集器**
 
 **provider 层**（`agent/provider.py`）：
 - `chat_stream()` 发 `stream=True`（并带 `stream_options.include_usage` 以拿到 usage），
@@ -1532,7 +1534,7 @@ asyncio 队列 —— 原来"攒完整段再切 24 字符"的伪造逻辑（`chu
 首字 1.2s、总耗时 2.0s；`qwen3.8-flash`（第三方兼容网关）同样返回 32 个 reasoning 帧 +
 12 个正文帧。DashScope 的 `qwen-max` 不返回 `reasoning_content`，此时面板不出现，正文照常逐 token。
 
-### 49. 思维链持久化：单独一列、单独参数，绝不混进给模型的消息
+**49. 思维链持久化：单独一列、单独参数，绝不混进给模型的消息**
 
 `messages` 表新增 `reasoning_content TEXT`（可空），旧库在 `Storage.__init__` 的 `_migrate()`
 里用 `PRAGMA table_info` 检测后 `ALTER TABLE` 补列 —— 与 `sessions.updated_seq` 同一套做法，
@@ -1552,7 +1554,7 @@ asyncio 队列 —— 原来"攒完整段再切 24 字符"的伪造逻辑（`chu
 前端 `reconstructMessages()` 把 `reasoning_content` 映射成 `reasoning` + `reasoningStreaming: false`，
 所以点历史会话时面板直接是「已深度思考（N 字）」的收起态，可点开回看。
 
-### 50. 消息操作：hover 出现，复制只复制正文，编辑回填输入框
+**50. 消息操作：hover 出现，复制只复制正文，编辑回填输入框**
 
 - 悬停（或键盘 focus）消息时出现操作区：`opacity-0 group-hover:opacity-100 focus-within:opacity-100`，
   默认不可见也不占视觉，键盘用户通过 focus 也能摸到。
@@ -1563,7 +1565,7 @@ asyncio 队列 —— 原来"攒完整段再切 24 字符"的伪造逻辑（`chu
   `Composer` 监听该信号 → `focus()` 并把光标移到末尾。刻意**不**做"发送即替换原消息"，
   因为那会牵扯历史重写与服务端截断，先按「快速引用上一次提问」来用。
 
-### 51. 本地知识库（RAG v1）：BM25 起步，向量接口预埋，不碰 agent/
+**51. 本地知识库（RAG v1）：BM25 起步，向量接口预埋，不碰 agent/**
 
 **依赖**：解析 PDF/Word 才需要 `pypdf` / `python-docx`（**用户自行安装**：
 `pip install pypdf python-docx`）。缺库时 `GET /api/kb/status` 的 `supported` 里就不会出现
@@ -1595,7 +1597,7 @@ backend 自己建表）→ 后台线程执行，`status` 走 `parsing → ready/
 → 工具返回含「600 元」与来源 `报销制度.txt（第 1 页）` → 回答里带上 600。
 `GET /api/kb/status` 报 `mode=keyword`、`pipeline="BM25 关键词检索（中文双字 + 英文整词）"`。
 
-### 52. 让模型「知道」该调知识库：三层提示 + 输入框直接上传
+**52. 让模型「知道」该调知识库：三层提示 + 输入框直接上传**
 
 实测踩过：上传了 README.md 后问「解析一下说的是什么」，模型却调 `list_dir` / `read_file`
 去 workspace 里翻，最后说没找到。根因是**模型不知道有知识库，也不知道上传的文件不在 workspace**。
@@ -1629,7 +1631,7 @@ backend 自己建表）→ 后台线程执行，`status` 走 `parsing → ready/
 顺手修了 `ChatArea` 的 `scrollIntoView` —— jsdom 没实现它，之前没有测试真正挂载 ChatArea
 所以一直没暴露；改成可选调用后，新测试能正常渲染聊天流。
 
-### 53. 联网搜索（Bing 主 / 百度兜底）与「中断 / 重新生成」
+**53. 联网搜索（Bing 主 / 百度兜底）与「中断 / 重新生成」**
 
 **web_search 为什么不用 duckduckgo_search / Jina**：实测这台机器上 DuckDuckGo（含 `ddgs`
 库的数据源）、Jina Reader、SearXNG、Wikipedia **全部超时**，只有 `cn.bing.com` 与
@@ -1672,7 +1674,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 并明确标注不确定性；`regenerate` 后消息数不变、user 消息仍只有 1 条、角色序列
 `[system,user,assistant,tool,assistant]` 保持不变，且还能继续正常追问。
 
-### 54. 流式渲染性能：流式期间**关闭语法高亮** + memo + 50ms 合帧
+**54. 流式渲染性能：流式期间**关闭语法高亮** + memo + 50ms 合帧**
 
 **症状**：输出到 100 行左右代码时浏览器「页面没有响应」。根因是每来一个 token，
 `react-markdown` 都会重新解析整段（越来越长的）markdown，里面的
@@ -1706,7 +1708,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 `bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-600`），副标题
 「你的私有化 AI 调度中枢」；`index.html` 的 `<title>` 改为 `Nexus 智枢 - 私有化 AI 中枢`。
 
-### 55. 「思考烧光预算、正文为空」不再 500：合成提示 + 暴露 finish_reason
+**55. 「思考烧光预算、正文为空」不再 500：合成提示 + 暴露 finish_reason**
 
 **线上事故**：用户问「写一个 200 行的 python 代码」，deepseek 把 4096 的 `max_tokens`
 全用在思维链上（13383 字思考），正文一个 token 都没产出。于是这一轮构造出
@@ -1741,7 +1743,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 
 连跑多次也稳定；如果某天 8192 仍被烧光，用户会看到那条人话提示而不是报错。
 
-### 56. 滚动跟随：用户在往上看时，流式内容绝不抢滚动条
+**56. 滚动跟随：用户在往上看时，流式内容绝不抢滚动条**
 
 **症状**：AI 流式输出时，只要新字一蹦出来，页面就把用户强行拽回底部 —— 想往上翻着读
 前面内容根本做不到。
@@ -1771,7 +1773,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 | 点「回到底部」 | 调用 `scrollTo` 且 `behavior: 'smooth'`，按钮消失 |
 | 用户发新消息（即使在上方看） | 强制滚到底部、按钮消失 |
 
-### 57. 沙箱徽章（纯前端）与「越界拦截」的真实性验证
+**57. 沙箱徽章（纯前端）与「越界拦截」的真实性验证**
 
 **UI**：输入框回形针右侧加了一枚「🛡 安全沙箱保护中」徽章（`ShieldCheck` + 淡绿胶囊），
 纯前端展示、不改任何后端逻辑。`title` 与自定义 Tooltip 都写明：
@@ -1800,7 +1802,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 代码侧对此的防护依据是 `Workspace.resolve()` 的注释与实现（`Path.resolve()` 会跟随链接，
 之后才判边界）。
 
-### 58. 工作区切换（Workspace Switcher）：可配置的沙箱根目录
+**58. 工作区切换（Workspace Switcher）：可配置的沙箱根目录**
 
 沙箱原本固定在 `config.yaml` 的 `agent.workspace`。但「想让它帮我重构 D:\\MyProject」是真实需求，
 所以把沙箱**根目录本身**做成可切换的 —— 注意切换的是边界位置，边界规则一点没松。
@@ -1839,7 +1841,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 | 真实模型：切到演示项目后问「读一下 hello_demo.py」 | ✅ 先 `list_dir` 再 `read_file`，回答正确 |
 | 真实模型：再问「读 C:\Windows\...\hosts」 | ✅ 模型自己就拒绝了调用；直接调用工具仍返回「路径越出 workspace」 |
 
-### 59. 多根工作区：`@name` 命名挂载（跨目录协同，红线不动）
+**59. 多根工作区：`@name` 命名挂载（跨目录协同，红线不动）**
 
 **需求**：主工作区在 `D:\ProjectA`，但要读 `D:\SharedLibs` 里的依赖库 —— 单根做不到。
 
@@ -1913,7 +1915,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 
 `pytest` 仍 328 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
 
-### 60. 目录选择器：点着选，不用手打绝对路径
+**60. 目录选择器：点着选，不用手打绝对路径**
 
 **问题**：工作区弹窗只能手输 `D:\ProjectA`；打错一个字母就报「路径不存在」，而且用户不知道
 `D:\SharedLibs` 到底存不存在、要不要先自己新建。
@@ -1960,7 +1962,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 管理器里手动建好再来选择），而不是干巴巴地抛 `[WinError 5] 拒绝访问`。
 注意：**读取**不受这类沙箱影响不受影响（只读挂载 `@libs` 照常可用），只有新建/写入受限。
 
-### 61. `create_dir` 工具、可操作的权限报错，以及一次「假 React 崩溃」的诊断
+**61. `create_dir` 工具、可操作的权限报错，以及一次「假 React 崩溃」的诊断**
 
 **① 新增 `create_dir` 工具**（`agent/tools/files.py` + `registry.py` + `KNOWN_TOOLS` + `config.yaml`）：
 模型原来没有建目录的能力，只能靠「写一个占位文件」来顺带创建父目录，遇到权限问题就卡死。
@@ -2014,7 +2016,7 @@ Low 进程写 `D:\ProjectA` 一定失败。系统 python（`D:\python3.11\python
 审批卡 + 100 帧流式、加载 29 条历史会话、长思考模型）均未能重现，因此没有改动渲染逻辑。
 以后再出现时，Console 里 `[MyAi] 页面渲染异常` 会直接给出出错组件，可据此定点修复。
 
-### 62. 文件 CRUD 补齐（create_dir / delete_path / move_path）+ 低完整性进程诊断
+**62. 文件 CRUD 补齐（create_dir / delete_path / move_path）+ 低完整性进程诊断**
 
 **① 新工具**（`agent/tools/files.py`、`registry.py`、`KNOWN_TOOLS`、`config.yaml`）：
 
@@ -2069,7 +2071,7 @@ main.py
 src/components/__init__.py
 ```
 
-### 63. Token 统计与「极客状态栏」：会话级缓存命中、上下文占用、省钱估算
+**63. Token 统计与「极客状态栏」：会话级缓存命中、上下文占用、省钱估算**
 
 **需求**：底部状态栏静默展示当前会话的 token 消耗与缓存节省；每条 AI 消息底部显示本轮
 `prompt 1200 (命中 90%) / completion 50 / total 1250`。
@@ -2104,7 +2106,7 @@ src/components/__init__.py
 **实测**：同一会话里单条 `prompt 3125 (命中 94%)`、会话累计 **84.4%**、全库 6.7% —— 状态栏现在展示
 84.4%（会话口径），不再被历史旧会话稀释；`/api/stats?session_id=...` 只返回该会话的数值。
 
-### 64. 侧边栏极简化 + 模型选择器迁入输入框（对齐 Cursor 的层级与配色）
+**64. 侧边栏极简化 + 模型选择器迁入输入框（对齐 Cursor 的层级与配色）**
 
 **动机**：侧边栏同时承担品牌、模型、会话、知识库，视觉密度高且蓝色块面积大；模型选择是高频操作，应贴着输入框。
 
@@ -2130,7 +2132,7 @@ src/components/__init__.py
 底部入口打开弹窗、streaming 时禁用/仍可管理）；`ModelManager` / `ModelPicker` / `FetchModels` / `App`
 等用例改为从 Composer 进入。前端 37 文件 / 199 passed + 6 skipped（含后续审批卡 / 错误边界用例）；`tsc --noEmit` 通过。
 
-### 65. Human-in-the-loop 工具审批：线程阻塞网关 + SSE 审批卡片
+**65. Human-in-the-loop 工具审批：线程阻塞网关 + SSE 审批卡片**
 
 **目标**：AI 要做**代码执行 / 删除 / shell** 这类高危操作时，先挂起，让人看到「即将发生什么」再决定；
 写入/建目录在 workspace 沙箱边界内静默执行，避免生成页面时每个文件弹一次、打断心流。
@@ -2163,7 +2165,7 @@ src/components/__init__.py
 **实测**：真实模型触发 `run_python_code` → SSE `approval_required` → 前端黄色卡片（代码预览）→
 点同意 → 子进程执行 → `tool_call_end` 展示 stdout → 模型给出最终回答。
 
-### 66. run_python_code：受限的 Code Interpreter（默认关闭 + 默认审批）
+**66. run_python_code：受限的 Code Interpreter（默认关闭 + 默认审批）**
 
 **动机**：让模型「现场生成、现场执行」代码，而不是只能读文件。
 
@@ -2187,7 +2189,7 @@ src/components/__init__.py
 「⚠️ 缺少依赖 python-docx 或 pypdf，文档解析功能将不可用。请运行 pip install -r requirements.txt」，
 只警告、不崩溃。
 
-### 67. 非法 JSON arguments 本地拦截 + 审批粒度调优（长任务不再 400 与弹窗轰炸）
+**67. 非法 JSON arguments 本地拦截 + 审批粒度调优（长任务不再 400 与弹窗轰炸）**
 
 **现象**：生成带大量引号/特殊字符的 HTML/JS 时，模型偶尔把 `function.arguments` 的 JSON
 转义写坏。旧实现把原始字符串原样回填进 assistant 历史，下一轮请求被上游以
@@ -2213,7 +2215,7 @@ src/components/__init__.py
 `tests/test_mock_server.py` 用真实 HTTP 假端点抓取每个请求体，断言所有
 `tool_calls[].function.arguments` 都能被 `json.loads` 解析，并验证非法调用未真正写文件。
 
-### 68. 上下文记忆：大参数压缩 + 1M 窗口 + 自动摘要（不再粗暴裁剪）
+**68. 上下文记忆：大参数压缩 + 1M 窗口 + 自动摘要（不再粗暴裁剪）**
 
 **问题**：写长代码时上下文瞬间 100%。旧实现有三个叠加原因：
 ① 写文件的 `tool_call.arguments` 里带着完整代码，历史每轮都重发；
