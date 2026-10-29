@@ -11,9 +11,9 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 
-<img src="./assets/ui-chat.png" alt="Nexus 智枢 - 对话与工具调用界面" width="800" />
+<p><img src="./assets/ui-chat.png" alt="Nexus 智枢 - 对话与工具调用界面" width="800" /></p>
 
-<img src="./assets/ui-approval.png" alt="Nexus 智枢 - 审批卡片与代码沙箱" width="800" />
+<p><img src="./assets/ui-approval.png" alt="Nexus 智枢 - 审批卡片与代码沙箱" width="800" /></p>
 
 </div>
 
@@ -37,7 +37,7 @@ graph TD
     User((用户)) -->|发消息 / 上传文档| FE[React 19 前端]
     FE -->|SSE 流式接收| API[FastAPI 网关]
     
-    subgraph Agent Core (自研智能体核心)
+    subgraph AgentCore [Agent Core 自研智能体核心]
         API -->|推入任务| Loop[Agent Loop 编排器]
         Loop -->|1. 请求并解析流| Provider[Provider 适配层]
         Provider -->|2. 识别 Reasoning 与 Text| Loop
@@ -47,7 +47,7 @@ graph TD
         Tools -->|6. 结果回灌| Loop
     end
     
-    subgraph Model Layer (多模型底座)
+    subgraph ModelLayer [Model Layer 多模型底座]
         Provider -.->|直连| DS[DeepSeek-V4 1M 上下文]
         Provider -.->|热插拔| ThirdParty[千问 / Moonshot / 本地 Ollama]
     end
