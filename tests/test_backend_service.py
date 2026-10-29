@@ -545,3 +545,22 @@ def test_optional_dependency_warning(capsys, monkeypatch) -> None:
     monkeypatch.setattr(backend_main, "check_optional_dependencies", lambda: [])
     assert backend_main.warn_missing_optional_dependencies() == []
     assert "缺少依赖" not in capsys.readouterr().err
+
+def test_client_error_report_is_logged(api, caplog) -> None:
+    client, _service, _config = api
+    with caplog.at_level("ERROR", logger="agent.web"):
+        response = client.post(
+            "/api/client-error",
+            json={
+                "source": "render",
+                "message": "Maximum update depth exceeded",
+                "stack": "Error: Maximum update depth exceeded\n    at Foo",
+                "component_stack": "\n    at ApprovalCard",
+                "url": "http://localhost:5173/",
+            },
+        )
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert "前端异常 source=render" in caplog.text
+    assert "Maximum update depth exceeded" in caplog.text
+    assert "ApprovalCard" in caplog.text

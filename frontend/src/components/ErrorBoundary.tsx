@@ -1,5 +1,6 @@
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
+import { reportClientError } from '../lib/clientError'
 
 type Props = { children: ReactNode }
 type State = { error: Error | null; componentStack: string }
@@ -20,6 +21,7 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo): void {
     // 开发时这条日志会进浏览器 Console；用户若反馈，复制这一整块即可看到组件栈
     console.error('[MyAi] 页面渲染异常：', error, '\n组件栈：', info.componentStack)
+    reportClientError('render', error, info.componentStack ?? '')
     this.setState({ componentStack: info.componentStack ?? '' })
   }
 

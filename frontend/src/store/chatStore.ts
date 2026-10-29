@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { api } from '../api/client'
 import { apiBase } from '../lib/base'
 import { reconstructMessages } from '../lib/reconstruct'
+import { reportClientError } from '../lib/clientError'
 import { streamChat, streamRegenerate, type ServerEvent } from '../lib/sse'
 import type {
   ChatMessage,
@@ -721,6 +722,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (isAbortError(error)) {
         get().markInterrupted()
       } else {
+        reportClientError('stream', error)
         set({
           error: error instanceof Error ? error.message : '请求失败，请检查后端是否在运行',
         })
@@ -799,6 +801,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (isAbortError(error)) {
         get().markInterrupted()
       } else {
+        reportClientError('regenerate', error)
         set({ error: error instanceof Error ? error.message : '重新生成失败' })
       }
     } finally {

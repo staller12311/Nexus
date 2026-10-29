@@ -2,7 +2,15 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { reportClientError } from './lib/clientError'
 import './index.css'
+
+window.addEventListener('error', (event) => {
+  if (event.error) reportClientError('window', event.error)
+})
+window.addEventListener('unhandledrejection', (event) => {
+  reportClientError('unhandledrejection', event.reason)
+})
 
 const container = document.getElementById('root')
 if (!container) throw new Error('找不到 #root 挂载点')

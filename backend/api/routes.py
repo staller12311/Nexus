@@ -33,6 +33,7 @@ from ..service.events import EventBridge, encode_event
 from .schemas import (
     ApproveIn,
     ApproveOut,
+    ClientErrorIn,
     ChatRequest,
     CustomModelDeletedOut,
     CustomModelIn,
@@ -500,6 +501,42 @@ async def _stream_chat(
         for pending in pending_approvals:
             pending.gate.cancel()
             service.approvals.discard(pending.approval_id)
+
+
+@router.post(
+    "/client-error",
+    summary="接收前端运行时错误（只写本地日志，便于定位渲染崩溃）",
+)
+def report_client_error(payload: ClientErrorIn) -> dict[str, bool]:
+    # 诊断日志独立落盘：不依赖 logging 初始化时序（前端可能在后端首次对话前就报错）
+    try:
+        from pathlib import Path as _Path
+        from datetime import datetime as _datetime
+
+        target = _Path(__file__).resolve().parents[2] / "data" / "client-errors.log"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        entry = (
+            f"[{_datetime.now().isoformat(timespec='seconds')}] source={payload.source[:40]}\n"
+            f"url={payload.url[:500]}\n"
+            f"message={payload.message[:4000]}\n"
+            f"stack={payload.stack[:12000]}\n"
+            f"component_stack={payload.component_stack[:12000]}\n"
+            "----------------------------------------\n"
+        )
+        with target.open("a", encoding="utf-8") as handle:
+            handle.write(entry)
+    except Exception:  # noqa: BLE001 - 诊断日志失败绝不能影响接口
+        pass
+
+    logger.error(
+        "前端异常 source=%s url=%s\nmessage=%s\nstack=%s\ncomponent_stack=%s",
+        payload.source[:40],
+        payload.url[:500],
+        payload.message[:4000],
+        payload.stack[:12000],
+        payload.component_stack[:12000],
+    )
+    return {"ok": True}
 
 
 @router.post(

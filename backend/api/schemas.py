@@ -252,3 +252,13 @@ class ApproveOut(BaseModel):
     ok: bool
     approval_id: str
     approved: bool
+
+
+class ClientErrorIn(BaseModel):
+    """前端运行时错误上报（只用于本地诊断，写到 data/agent.log）。"""
+
+    source: str = Field(default="unknown", description="stream / render / window / unhandledrejection")
+    message: str = Field(default="")
+    stack: str = Field(default="")
+    component_stack: str = Field(default="")
+    url: str = Field(default="")
