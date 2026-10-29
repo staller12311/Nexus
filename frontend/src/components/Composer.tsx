@@ -72,7 +72,7 @@ export function Composer() {
 
   return (
     <div className="border-t border-slate-200 bg-white/80 backdrop-blur">
-      <div className="mx-auto w-full max-w-3xl px-4 py-3">
+      <div className="mx-auto w-full max-w-2xl px-4 py-3">
         {/* 输入区 + 工具栏 + 底部提示统一收进一张卡片里 */}
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow focus-within:border-sky-300 focus-within:shadow-md focus-within:ring-4 focus-within:ring-sky-50">
           <textarea
