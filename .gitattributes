@@ -1,0 +1,5 @@
+# 容器脚本必须保持 LF，否则 /bin/sh 会报 "exec format error"
+*.sh text eol=lf
+docker/*.conf text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf

@@ -1,10 +1,58 @@
-# LLM Agent（本地命令行智能体）
+# Nexus 智枢
 
-一个本地运行的命令行智能体：通过 `config.yaml` 接入任意 **OpenAI 兼容 API**
-（OpenAI / DeepSeek / Moonshot / 通义千问 / 智谱 / OpenRouter / 本地 Ollama / vLLM 等），
-支持多轮对话、工具调用（function calling）、会话持久化与恢复。全部逻辑自研，不依赖任何 agent 框架。
+<div>
 
-## 安装
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+
+</div>
+
+**Nexus 智枢 - 具备企业级安全沙箱的私有化 AI Agent 中台。**
+
+本地优先、可审计、模型可热插拔：自研 Agent Loop + 真流式 SSE + 工具沙箱 + Human-in-the-loop 审批，
+把「会写代码、会调工具」的智能体装进你自己的电脑 / 私有服务器。数据不出本机，模型随时可换。
+
+## ✨ 核心特性
+
+- ✅ **自研 Agent Loop**：推理/正文双通道流式解析，`tool_calls` 碎片按 index 拼装，不依赖任何 Agent 框架
+- ✅ **多模型热插拔**：任意 OpenAI 兼容端点（DeepSeek / 千问 / Moonshot / 智谱 / Ollama / vLLM），一个 YAML 搞定
+- ✅ **真·流式 Web 体验**：SSE 打字机、思考链折叠、工具卡实时状态、React 19 + Zustand
+- ✅ **企业级安全沙箱**：workspace realpath 越界校验、`@mount` 只读挂载、命令/域名白名单、危险工具审批闸门
+- ✅ **长上下文记忆**：1M 窗口校准 + 大参数历史压缩 + 80% 自动摘要（不再粗暴砍历史）
+- ✅ **协议级健壮性**：非法 `function.arguments` 本地拦截、工具异常回灌、上游 400 防御
+- ✅ **可观测与成本**：Token/缓存命中率/节省估算、结构化日志与密钥脱敏、会话级统计
+- ✅ **一键启动 / 一键部署**：Windows `start.bat`；Docker Compose 一条命令跑通
+
+## ⚡ 快速开始
+
+**方式 A：Windows 本地一键启动**
+
+```bat
+start.bat
+```
+
+自动启动后端（8000）与前端（5173）并打开浏览器；关闭窗口或 Ctrl+C 同时停止两者，不留僵尸端口。
+
+**方式 B：Docker 一键部署（推荐给服务器 / 给别人试用）**
+
+```bash
+git clone <your-repo-url> nexus-zhishu && cd nexus-zhishu
+cp .env.example .env          # 填入 DEEPSEEK_API_KEY（或其它模型密钥）
+docker compose up -d          # 首次构建约 3–5 分钟
+```
+
+打开 **http://localhost:8080**。`data/`（SQLite 会话、日志）与 `workspace/`（Agent 文件沙箱）
+通过 volume 挂载到宿主机；Nginx 负责静态站点与 `/api` 反代，SSE 已关闭缓冲。
+
+> 🔒 安全提示：本项目默认面向**完全信任的本地开发环境**（`config.yaml` 中 `require_approval: false`）。
+> 如果 workspace 会处理他人代码或不可信输入，请把 `tools.require_approval` 改为 `true`，
+> 危险工具（`run_python_code` / `delete_path` / `run_shell`）将重新走人工审批。
+
+## 🧑‍💻 手动安装（开发模式）
+
+适合想改代码 / 跑测试的开发者。
 
 ```bash
 python -m venv .venv

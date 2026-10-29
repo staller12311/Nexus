@@ -1,0 +1,43 @@
+name: nexus-zhishu
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    image: nexus-zhishu-backend:latest
+    environment:
+      # 密钥从宿主机环境/.env 读取；.env 不存在时为空，容器仍可正常启动
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-ollama}
+      AGENT_CONFIG: /app/config.yaml
+    volumes:
+      - ./data:/app/data
+      - ./workspace:/app/workspace
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    image: nexus-zhishu-web:latest
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
