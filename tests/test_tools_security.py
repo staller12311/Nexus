@@ -112,6 +112,23 @@ def test_read_file_truncates_large_file(workspace: Workspace, ws_root: Path) -> 
     assert body == "x" * 100
 
 
+def test_read_file_never_loads_whole_file(
+    workspace: Workspace, ws_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """防 OOM 回归：只读 max_bytes+1 字节，绝不调用 read_bytes 整读大文件。"""
+    (ws_root / "huge.txt").write_bytes(b"y" * 2_000_000)
+
+    def _forbidden(self: Path) -> bytes:
+        raise AssertionError("read_file 不应把整个文件读进内存")
+
+    monkeypatch.setattr(Path, "read_bytes", _forbidden)
+
+    content = read_file(workspace, "huge.txt", max_bytes=100)
+    assert "已截断" in content
+    assert "1.9 MB" in content  # 头部仍报告真实文件大小
+    assert content.endswith("y" * 100)
+
+
 # ============================================================ 2. ../ 穿越
 @pytest.mark.parametrize(
     "path",
@@ -456,7 +473,15 @@ def test_host_matching_allows_subdomains_only() -> None:
 def test_default_config_enables_expected_tools() -> None:
     config = load_config(EXAMPLE_CONFIG, load_env_file=False)
     registry = build_registry(config)
-    assert registry.names() == ["read_file", "write_file", "list_dir", "get_time"]
+    assert registry.names() == [
+        "read_file",
+        "write_file",
+        "create_dir",
+        "delete_path",
+        "move_path",
+        "list_dir",
+        "get_time",
+    ]
     assert "run_shell" not in registry
     assert "http_get" not in registry
 
@@ -665,7 +690,15 @@ def test_get_time_is_enabled_in_example_config() -> None:
     """④ config.example.yaml 的 tools.enabled 默认值含 get_time。"""
     config = load_config(EXAMPLE_CONFIG, load_env_file=False)
     assert "get_time" in config.tools.enabled
-    assert config.tools.enabled == ["read_file", "write_file", "list_dir", "get_time"]
+    assert config.tools.enabled == [
+        "read_file",
+        "write_file",
+        "create_dir",
+        "delete_path",
+        "move_path",
+        "list_dir",
+        "get_time",
+    ]
 
 
 def test_get_time_is_in_code_defaults(tmp_path: Path) -> None:

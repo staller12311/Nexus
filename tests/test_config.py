@@ -47,9 +47,16 @@ def test_example_config_is_valid() -> None:
     assert set(config.models) == {"deepseek", "ollama"}
     assert config.models["deepseek"].context_window == 65536
     assert config.models["ollama"].base_url == "http://localhost:11434/v1"
-    assert config.tools.enabled == ["read_file", "write_file", "list_dir", "get_time"]
+    assert config.tools.enabled == [
+        "read_file",
+        "write_file",
+        "create_dir",
+        "delete_path",
+        "move_path",
+        "list_dir",
+        "get_time",
+    ]
     assert "http_get" not in config.tools.enabled
-    assert config.agent.stream is False
     assert config.agent.max_tool_rounds == 8
     assert config.logging.level == "INFO"
 
@@ -69,11 +76,11 @@ def test_example_config_keeps_field_names() -> None:
         "system_prompt_file",
         "system_prompt",
         "workspace",
+        "extra_workspaces",
         "max_tool_rounds",
         "max_history_messages",
         "request_timeout",
         "max_retries",
-        "stream",
     }
     assert set(raw["tools"]) == {"enabled", "run_shell", "http_get"}
     assert set(raw["storage"]) == {"db_path"}
@@ -227,9 +234,10 @@ def test_example_config_has_empty_allowlists() -> None:
     assert config.tools.http_get.allowed_domains == []
 
 
-def test_stream_true_is_rejected() -> None:
+def test_removed_stream_key_is_rejected() -> None:
+    """stream 开关已随真流式落地废弃：再写进配置应报未知字段，而不是被静默忽略。"""
     data = _minimal_config()
-    data["agent"] = {"stream": True}
+    data["agent"] = {"stream": False}
     with pytest.raises(ConfigError) as excinfo:
         build_config(data)
     assert "stream" in str(excinfo.value)

@@ -117,7 +117,6 @@ max_tokens            4096
 context_window        131072
 request_timeout       60s
 max_retries           3
-stream                False
 max_tool_rounds       8
 max_history_messages  40
 workspace             D:\MyAi\_acc\workspace
@@ -649,7 +648,8 @@ rich 只负责把**已完整拿到的回复分块打印**（按段落/换行输�
 
 > **已过时（见第 48 条）**：这条是 P0 的阶段性取舍。第 48 条按「独立特性整体引入」的方式
 > 完成了真流式：新增 `chat_stream()` / `run_stream()`，`run()` 改为收集流式结果，
-> 主循环不再同时兼容两种形态。配置里的 `agent.stream` 字段保留但不再影响运行时路径。
+> 主循环不再同时兼容两种形态。`agent.stream` 字段已随之**删除**（配置里再写 `stream`
+> 会按未知字段报错，见第 3 条的 `extra="forbid"`）。
 
 ### 5. 密钥只以「环境变量名」出现在配置里
 
@@ -907,7 +907,8 @@ message 角色序列: ['system', 'user', 'assistant', 'tool', 'assistant', 'user
 
 ### 24. rich 只负责「已经完整拿到的回复」的分段打印
 
-`stream` 固定 `false`（第 4 条），响应到手就是完整字符串，rich 的职责只是渲染：
+CLI 打印的是 `run()` 收集到的**完整回复**（第 48 条起主循环内部走 `run_stream`，但 `run()`
+只返回最终结果），rich 的职责只是渲染：
 
 - 按空行把回复切成段落逐段打印，不做任何推断或改写；
 - **模型产出的文本一律包成 `rich.text.Text`**，不做 markup 解析 —— 否则模型输出里的

@@ -154,7 +154,7 @@ class TestConfigCheck:
         assert "base_url" in captured.out
         assert "request_timeout" in captured.out
         assert "max_tokens" in captured.out
-        assert "stream" in captured.out
+        assert "max_tool_rounds" in captured.out
         assert f"{CLI_KEY_ENV}: 已设置" in captured.out
         assert "配置检查通过" in captured.out
         # 密钥明文绝不允许出现

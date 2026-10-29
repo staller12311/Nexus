@@ -208,7 +208,11 @@ def _human_size(count: int) -> str:
 
 
 def read_file(workspace: Workspace, path: str, max_bytes: int = MAX_READ_BYTES) -> str:
-    """读取 workspace 内的文本文件（UTF-8，按需截断）。"""
+    """读取 workspace 内的文本文件（UTF-8）。
+
+    最多只从磁盘读 ``max_bytes + 1`` 字节，超出的部分直接截断 —— 大文件不会
+    被整读进内存（``MAX_READ_BYTES`` 默认 200KB，一次调用最多占这么多）。
+    """
     target = workspace.resolve(path)
     relative = workspace.relative(target)
 
@@ -219,8 +223,13 @@ def read_file(workspace: Workspace, path: str, max_bytes: int = MAX_READ_BYTES) 
     if not target.is_file():
         raise ToolError(f"{relative} 不是普通文件，已拒绝读取。")
 
+    limit = max(1, int(max_bytes))
     try:
-        data = target.read_bytes()
+        # 只读最多 limit+1 字节：既不把大文件整读进内存（防 OOM），
+        # 读满 limit+1 就足以判断是否被截断。
+        with target.open("rb") as handle:
+            head = handle.read(limit + 1)
+        total_size = target.stat().st_size
     except PermissionError as exc:
         raise ToolError(
             f"没有权限读取 {relative}（{exc.strerror or exc}）。"
@@ -229,11 +238,10 @@ def read_file(workspace: Workspace, path: str, max_bytes: int = MAX_READ_BYTES) 
     except OSError as exc:
         raise ToolError(f"读取 {relative} 失败：{exc}") from exc
 
-    limit = max(1, int(max_bytes))
-    truncated = len(data) > limit
-    text = data[:limit].decode("utf-8", errors="replace")
+    truncated = len(head) > limit
+    text = head[:limit].decode("utf-8", errors="replace")
 
-    header = f"# {relative}（{_human_size(len(data))}）"
+    header = f"# {relative}（{_human_size(total_size)}）"
     if truncated:
         header += f"\n# 注意：文件过大，只返回前 {_human_size(limit)}，其余已截断。"
     return f"{header}\n{text}"

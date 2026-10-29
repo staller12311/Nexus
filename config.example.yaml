@@ -1,6 +1,6 @@
 # 复制本文件为 config.yaml 后按需修改。
 # 加载优先级：命令行 --config > 环境变量 AGENT_CONFIG > ./config.yaml
-# 所有相对路径（workspace / db_path / logging.file / system_prompt_file）
+# 所有相对路径（workspace / extra_workspaces / db_path / logging.file / system_prompt_file）
 # 都相对于「配置文件所在目录」解析。
 # 密钥不写在这里：只写环境变量名 api_key_env，真实值放在 .env 或系统环境变量里。
 
@@ -12,7 +12,7 @@ models:
     model: deepseek-chat
     api_key_env: DEEPSEEK_API_KEY
     temperature: 0.7
-    max_tokens: 4096
+    max_tokens: 4096           # 思维链也算在 completion 里：写长代码建议调到 8192
     context_window: 65536
   ollama:
     base_url: http://localhost:11434/v1
@@ -26,18 +26,25 @@ agent:
   system_prompt_file: prompts/system.md   # 若不存在则用下面的 system_prompt
   system_prompt: "你是一个严谨、简洁的助手。"
   workspace: ./workspace        # 文件类工具的根目录，必须做 realpath 越界校验
+  # 附加工作区（多根）：模型用 @名字/路径 访问，例如 read_file("@libs/http/client.py")。
+  # 相对路径永远只相对主工作区解析；附加目录必须带 @名字 前缀，默认只读。
+  # extra_workspaces:
+  #   - name: libs
+  #     path: ../SharedLibs
+  #     writable: false
+  extra_workspaces: []
   max_tool_rounds: 8            # 工具调用循环上限
   max_history_messages: 40      # 送进模型的历史消息上限
   request_timeout: 60
   max_retries: 3
-  stream: false                 # P0 阶段固定 false，理由见 README
 
 tools:
-  # 可选项：read_file, write_file, list_dir, get_time, run_shell, http_get
-  # run_shell / http_get 默认不启用，需自行配置白名单后再加入本列表
+  # 可选项：read_file, write_file, create_dir, delete_path, move_path, list_dir,
+  #         get_time, run_shell, http_get
+  # run_shell / http_get 默认不启用，需自行配置白名单后再加入本列表。
   # get_time 是示例工具（README「如何新增一个工具」的模板）：无副作用，不需要配置；
   # 不想要就从本列表里删掉它，代码留着也无害。
-  enabled: [read_file, write_file, list_dir, get_time]
+  enabled: [read_file, write_file, create_dir, delete_path, move_path, list_dir, get_time]
   run_shell:
     # 只能填 PATH 中真实存在的可执行文件（如 git、python、rg）。
     # 注意：dir / type / copy 是 cmd 内建命令，ls / cat 在 Windows 上不存在，

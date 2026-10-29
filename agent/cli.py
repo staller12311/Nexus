@@ -254,7 +254,6 @@ def render_config_check(
         ("context_window", str(model.context_window)),
         ("request_timeout", f"{agent.request_timeout:g}s"),
         ("max_retries", str(agent.max_retries)),
-        ("stream", str(agent.stream)),
         ("max_tool_rounds", str(agent.max_tool_rounds)),
         ("max_history_messages", str(agent.max_history_messages)),
         ("workspace", str(config.workspace_path)),

@@ -366,8 +366,14 @@ class AgentService:
         raise ConfigError(f"未定义模型 {model_name!r}，已定义的模型为 {available}")
 
     def list_tools(self) -> list[ToolInfo]:
+        """全部工具：config.yaml 里的内置工具 + registry 中动态注入的工具。
+
+        注入工具（``search_knowledge_base`` / ``web_search``）不在 ``KNOWN_TOOLS`` 里，
+        但它们确实注册进了当前 registry、每轮对话都会被模型看到并调用，所以按 registry
+        的真实内容补齐 —— 保证 ``/api/tools`` 与模型实际可用工具一致。
+        """
         enabled = set(self.config.tools.enabled)
-        return [
+        tools = [
             ToolInfo(
                 name=name,
                 enabled=name in enabled,
@@ -376,6 +382,22 @@ class AgentService:
             )
             for name in KNOWN_TOOLS
         ]
+        listed = {tool.name for tool in tools}
+        for schema in self.registry.schemas():
+            function = schema.get("function") or {}
+            name = str(function.get("name") or "")
+            if not name or name in listed:
+                continue
+            tools.append(
+                ToolInfo(
+                    name=name,
+                    # 注入工具不受 tools.enabled 控制：注册即生效
+                    enabled=True,
+                    default_disabled=False,
+                    description=str(function.get("description") or ""),
+                )
+            )
+        return tools
 
     def list_sessions(self, limit: int = DEFAULT_SESSION_LIMIT) -> list[SessionInfo]:
         with self._storage() as storage:

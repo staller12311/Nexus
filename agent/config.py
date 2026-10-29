@@ -6,7 +6,7 @@
 - 所有相对路径以「配置文件所在目录」为基准解析，而不是当前工作目录，
   这样从任何目录启动都能得到同一套 workspace / 数据库 / 日志路径。
 - 未知字段直接报错（``extra="forbid"``），用于抓住配置里的拼写错误。
-- P0 阶段固定非流式，``stream: true`` 会被校验拒绝。
+- 流式是运行时的唯一路径（见 ``provider.chat_stream``），没有开关可配。
 """
 
 from __future__ import annotations
@@ -132,16 +132,6 @@ class AgentConfig(_StrictModel):
     max_history_messages: int = Field(default=40, ge=1)
     request_timeout: float = Field(default=60, gt=0)
     max_retries: int = Field(default=3, ge=0)
-    stream: bool = False
-
-    @field_validator("stream")
-    @classmethod
-    def _no_stream(cls, value: bool) -> bool:
-        if value:
-            raise ValueError(
-                "P0 阶段只支持非流式请求，stream 必须为 false（理由见 README「设计决策」）"
-            )
-        return value
 
     def system_prompt_text(self, config_dir: Path) -> str:
         """优先读取 system_prompt_file；文件不存在时退回 system_prompt。"""

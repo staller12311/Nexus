@@ -24,7 +24,6 @@ agent:
   max_history_messages: 40
   request_timeout: 30
   max_retries: 2
-  stream: false
 
 tools:
   enabled: [read_file, write_file, list_dir, get_time]
