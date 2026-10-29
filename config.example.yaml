@@ -1,0 +1,56 @@
+# 复制本文件为 config.yaml 后按需修改。
+# 加载优先级：命令行 --config > 环境变量 AGENT_CONFIG > ./config.yaml
+# 所有相对路径（workspace / db_path / logging.file / system_prompt_file）
+# 都相对于「配置文件所在目录」解析。
+# 密钥不写在这里：只写环境变量名 api_key_env，真实值放在 .env 或系统环境变量里。
+
+default_model: deepseek
+
+models:
+  deepseek:
+    base_url: https://api.deepseek.com/v1
+    model: deepseek-chat
+    api_key_env: DEEPSEEK_API_KEY
+    temperature: 0.7
+    max_tokens: 4096
+    context_window: 65536
+  ollama:
+    base_url: http://localhost:11434/v1
+    model: qwen2.5:7b
+    api_key_env: OLLAMA_API_KEY      # 本地可填任意非空值
+    temperature: 0.7
+    max_tokens: 2048
+    context_window: 32768
+
+agent:
+  system_prompt_file: prompts/system.md   # 若不存在则用下面的 system_prompt
+  system_prompt: "你是一个严谨、简洁的助手。"
+  workspace: ./workspace        # 文件类工具的根目录，必须做 realpath 越界校验
+  max_tool_rounds: 8            # 工具调用循环上限
+  max_history_messages: 40      # 送进模型的历史消息上限
+  request_timeout: 60
+  max_retries: 3
+  stream: false                 # P0 阶段固定 false，理由见 README
+
+tools:
+  # 可选项：read_file, write_file, list_dir, get_time, run_shell, http_get
+  # run_shell / http_get 默认不启用，需自行配置白名单后再加入本列表
+  # get_time 是示例工具（README「如何新增一个工具」的模板）：无副作用，不需要配置；
+  # 不想要就从本列表里删掉它，代码留着也无害。
+  enabled: [read_file, write_file, list_dir, get_time]
+  run_shell:
+    # 只能填 PATH 中真实存在的可执行文件（如 git、python、rg）。
+    # 注意：dir / type / copy 是 cmd 内建命令，ls / cat 在 Windows 上不存在，
+    # 我们用 shell=False 直接执行，这些名字一律 FileNotFoundError，不要填。
+    # 空白名单 = 什么都跑不了（默认）。
+    allowed_commands: []
+  http_get:
+    # 空白名单 = 不允许访问任何域名（默认）。命中规则：完全相同或其子域。
+    allowed_domains: []
+
+storage:
+  db_path: ./data/sessions.db
+
+logging:
+  level: INFO
+  file: ./data/agent.log

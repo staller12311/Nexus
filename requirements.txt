@@ -1,0 +1,10 @@
+# 运行依赖
+openai>=3.37.0,<4
+httpx2>=2.16.0,<3        # openai 3.x 的 HTTP 传输层（不是 httpx）；锁定以防大版本变更改动请求/错误行为
+pydantic>=2
+pyyaml
+rich
+python-dotenv
+
+# 开发/测试依赖（不跑 pytest 时可以不装）
+pytest
