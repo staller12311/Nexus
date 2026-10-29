@@ -278,11 +278,11 @@ python -m agent config check    # 打印将要使用的配置；密钥缺失时�
 > 必须用 `python -m pytest`（而不是裸 `pytest`）：测试通过包名 `agent.*` 导入，
 > 需要仓库根目录在 `sys.path` 上，`python -m` 会把当前目录加进去。
 
-当前全量：**290 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
-后端用例：`tests/test_backend_service.py` 的 10 个 API 冒烟 + 1 条 SQLite 并发回归；
-本轮新增 10 条 token/缓存统计用例（`Usage` 双厂商缓存字段解析、`usage_json` 落库与回放、
-`/api/stats` 聚合），另加 2 条会话级统计口径用例（prompt-only 分母、未知会话 404），总数从 278 增至 290。
-前端：34 个测试文件 / 190 passed + 6 skipped（含 5 条模型菜单布局用例、6 条状态栏/统计口径/成本估算用例）。
+当前全量：**321 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
+后端用例：`tests/test_backend_service.py` 覆盖工作区 / 知识库 / 自定义模型 / 用量统计 / 审批接口；
+本轮新增审批流 11 条（Gate/Registry/loop/接口）与 `run_python_code` 16 条（执行/超时/清理/参数校验），
+总数从 290 增至 321。
+前端：35 个测试文件 / 197 passed + 6 skipped（含审批卡片、SSE 审批事件、模型菜单、状态栏用例）。
 
 ## 如何新增一个工具
 
@@ -426,6 +426,7 @@ cd frontend && npm run dev                            # http://localhost:5173
 | POST | `/api/sessions/{id}/generate_title?force=false` | — | `{session_id, title, generated, model}`（短超时、非流式，失败 503） |
 | PATCH | `/api/sessions/{id}/system_prompt` | `{system_prompt}` | `{session_id, system_prompt, created, seq}` |
 | POST | `/api/chat/stream` | `{session_id, message, model?}` | `text/event-stream` |
+| POST | `/api/chat/approve` | `{approval_id, approved, reason?}` | 200 `{ok, approval_id, approved}`；404 不存在/已过期、409 已处理 |
 | GET | `/api/health` | — | `{status:"ok", python, integrity, write_warning}`（含运行时诊断） |
 | GET | `/api/stats?session_id=` | — | `{sessions, prompt_tokens, completion_tokens, total_tokens, cache_hit_tokens, cache_hit_rate, session_id}`（默认按当前会话；不传 `session_id` 为全库诊断口径） |
 | GET | `/api/config/workspace` | — | `{workspace, default_workspace, is_default, extras:[{name, path, writable}]}` |
@@ -451,6 +452,7 @@ cd frontend && npm run dev                            # http://localhost:5173
 {"type":"reasoning_delta","text":"先把两个数…"}          ← 思维链增量（模型支持时才有）
 {"type":"tool_call_start","tool_call_id":"...","name":"read_file","arguments":"{\"path\": \"readme.txt\"}"}
 {"type":"tool_call_end","tool_call_id":"...","name":"read_file","ok":true,"content":"..."}
+{"type":"approval_required","approval_id":"ap_1a2b3c4d","session_id":"...","tool_call_id":"...","name":"write_file","arguments":"{...原始 JSON...}","expires_in":300}
 {"type":"text_delta","delta":"..."}                    ← 真·逐 token
 {"type":"message_end","content":"...","reasoning":"...","usage":{"prompt_tokens":24,"completion_tokens":12,"total_tokens":36,"cache_hit_tokens":18,"cache_hit_rate":0.75},"rounds":1,"tool_limit_reached":false}
 {"type":"error","message":"...","code":"ProviderAuthError"}
@@ -602,7 +604,7 @@ cd frontend && npm run test
 - [x] **三种用法示例**：`run "问题"` / `chat` / `sessions resume <id>`，均在 `## 运行`，附真实终端输出
 - [x] **如何新增一个模型**：`### 如何新增一个模型`（Moonshot 示例 + `.env` 步骤 + 真实 `config check` 输出）
 - [x] **如何新增一个工具**：`## 如何新增一个工具`（`get_time` 示例 + 5 步改动 + 真实 `tools list` / `run` 输出）
-- [x] **「设计决策」章节**：`## 设计决策`（64 条，含 Web 阶段的 34–64）
+- [x] **「设计决策」章节**：`## 设计决策`（66 条，含 Web 阶段的 34–66）
 
 Web 界面（第一阶段 CLI 之外的增量交付）：
 
@@ -625,6 +627,10 @@ Web 界面（第一阶段 CLI 之外的增量交付）：
 - [x] **运行时诊断**：`GET /api/health` 返回 `python` / `integrity` / `write_warning`（第 62 条②）
 - [x] **极客状态栏**：单轮 usage（含缓存命中率）+ 会话级 `GET /api/stats` + 上下文占用 + 省钱估算（第 63 条）
 - [x] **极简侧边栏 + 输入框内模型选择**：黑灰白配色、向上弹出的模型菜单（第 64 条）
+- [x] **Human-in-the-loop 工具审批**：危险工具挂起 → SSE `approval_required` → 黄色审批卡
+  （write_file 带只读代码预览）→ `POST /api/chat/approve`；超时/断开自动拒绝（第 65 条）
+- [x] **run_python_code 代码执行器**：工作区临时脚本 + 子进程 + 超时/输出截断，
+  默认关闭、默认纳入审批集合（第 66 条）
 
 ## 已知待办
 
@@ -1691,7 +1697,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 写 @libs 的要求: 模型自己拒绝（只读挂载），且 @libs 文件内容未被改动（PORT 仍 8080）
 ```
 
-`pytest` 仍 290 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
+`pytest` 仍 321 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
 
 ### 60. 目录选择器：点着选，不用手打绝对路径
 
@@ -1902,4 +1908,52 @@ src/components/__init__.py
 
 **测试**：新增 `ModelMenu.test.tsx` 5 条（侧边栏无模型控件、菜单向上弹出且 `z-50`、选择写回 store、
 底部入口打开弹窗、streaming 时禁用/仍可管理）；`ModelManager` / `ModelPicker` / `FetchModels` / `App`
-等用例改为从 Composer 进入。前端 34 文件 / 190 passed + 6 skipped（统计口径修正后）；`tsc --noEmit` 通过。
+等用例改为从 Composer 进入。前端 35 文件 / 197 passed + 6 skipped（含后续审批卡用例）；`tsc --noEmit` 通过。
+
+### 65. Human-in-the-loop 工具审批：线程阻塞网关 + SSE 审批卡片
+
+**目标**：AI 想写/删/移动文件时，先挂起，让人看到「即将发生什么」再决定。
+
+**线程模型（关键）**：Agent 循环跑在 `asyncio.to_thread` 的工作线程里，所以「挂起」不用协程，
+而是 `backend/service/approvals.py` 里的同步原语：
+- `ApprovalGate.wait()` 在线程里阻塞（默认 300s），`POST /api/chat/approve` 从 HTTP 线程
+  `resolve()` 唤醒；一次性、超时按拒绝。
+- `AgentService.approvals` 是进程级登记表；`approval_id` 一次性，404（不存在/过期）与 409（重复决策）分开。
+- 客户端断开：SSE 生成器 `finally` 里 `gate.cancel()`，工作线程按「拒绝」继续并把
+  `用户已拒绝此操作，工具未执行。` 回填成 tool 消息；再加上 `AgentLoop.abort_pending_tool_calls()`
+  收尾，历史永远合法（绝不悬空 `tool_call`）。
+- 配置：`tools.require_approval` / `approval_required` / `approval_timeout`；
+  `run_python_code` 默认也在审批集合里。CLI 用终端 y/N，非 TTY 自动拒绝。
+
+**前端**：`approval_required` 事件把 `approval` 状态挂到对应工具卡片上，`ApprovalCard` 渲染黄色卡片：
+`write_file` 解析 `path`/`content`，用只读 `CodeBlock`（行号 + 高亮）展示即将写入的内容
+（超 200 行折叠并提示「同意后完整写入」）；`delete_path`/`move_path` 展示路径与不可逆提醒；
+按钮 `同意执行` / `拒绝`；决定后卡片降级为普通工具卡 + 「已同意/已拒绝/审批过期」徽标，
+`tool_call_end` 的结果照常展示（执行结果可见）。
+
+**实测**：真实模型触发 `run_python_code` → SSE `approval_required` → 前端黄色卡片（代码预览）→
+点同意 → 子进程执行 → `tool_call_end` 展示 stdout → 模型给出最终回答。
+
+### 66. run_python_code：受限的 Code Interpreter（默认关闭 + 默认审批）
+
+**动机**：让模型「现场生成、现场执行」代码，而不是只能读文件。
+
+**实现**（`agent/tools/python_exec.py`）：
+- 代码非空且 ≤20KB；写到**主工作区** `.agent_tmp/run_<uuid6>.py`（走 `Workspace` 校验，
+  只读挂载/越界拒绝），执行后必删，空目录也清理；
+- `sys.executable -I -B -X utf8` + 最小环境（SYSTEMROOT/PATH/TEMP/TMP）+ `cwd=workspace.root`
+  + `capture_output` + `timeout`；`-X utf8` 是因为 `-I` 会忽略 `PYTHONIOENCODING`，
+  不加在 GBK 机器上中文输出会乱码；
+- 返回「退出码 / 用时 / --- stdout --- / --- stderr ---」，各自按 `max_output_chars` 截断并注明省略量；
+  超时抛 `执行超时（Ns），已终止`；
+- 配置：`tools.python_exec.timeout`（默认 10s）/ `max_output_chars`（默认 8000）；工具可通过
+  `timeout` 参数覆盖单次上限。
+
+**安全边界（诚实版）**：这不是 OS 级隔离。代码以当前进程权限运行，能读写该权限触达的文件、
+访问网络；`-I` 只隔离 Python 环境，不构成安全边界。因此：`config.example.yaml` 默认**关闭**；
+一旦启用，默认纳入 `approval_required`（每次执行都要人工确认）；真实边界依赖 OS 账户/沙箱，
+本期不承诺。
+
+**依赖自检**：`backend/main.py` 启动时尝试 import `docx`/`pypdf`，缺失则控制台黄色打印
+「⚠️ 缺少依赖 python-docx 或 pypdf，文档解析功能将不可用。请运行 pip install -r requirements.txt」，
+只警告、不崩溃。
