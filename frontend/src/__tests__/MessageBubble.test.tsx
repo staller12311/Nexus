@@ -70,13 +70,20 @@ describe('MessageBubble 渲染规则', () => {
     expect(screen.getByText(/失败/)).toBeInTheDocument()
   })
 
-  it('usage 显示在 AI 回复底部', () => {
+  it('usage 显示在 AI 回复底部，并带缓存命中率', () => {
     const message: ChatMessage = {
       ...base,
       content: '读到了 hi',
-      usage: { prompt_tokens: 24, completion_tokens: 12, total_tokens: 36 },
+      usage: {
+        prompt_tokens: 24,
+        completion_tokens: 12,
+        total_tokens: 36,
+        cache_hit_tokens: 12,
+      },
     }
     render(<MessageBubble message={message} />)
-    expect(screen.getByText(/prompt 24 \/ completion 12 \/ total 36/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/prompt 24 \(命中 50%\) \/ completion 12 \/ total 36/),
+    ).toBeInTheDocument()
   })
 })

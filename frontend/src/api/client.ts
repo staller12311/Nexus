@@ -8,6 +8,7 @@ import type {
   FsEntry,
   FsListing,
   SessionInfo,
+  UsageStats,
   WorkspaceExtra,
   WorkspaceInfo,
 } from '../types'
@@ -75,6 +76,8 @@ function uploadFile<T>(path: string, file: File, onProgress?: (percent: number) 
 
 export const api = {
   models: () => request<ModelInfo[]>('/models'),
+  /** 全库累计用量（底部状态栏）：总 tokens、整体缓存命中率 */
+  stats: () => request<UsageStats>('/stats'),
   sessions: (limit = 20) => request<{ sessions: SessionInfo[] }>(`/sessions?limit=${limit}`),
   session: (id: string) =>
     request<{ session: SessionInfo; messages: ApiMessage[]; system_prompt: string }>(

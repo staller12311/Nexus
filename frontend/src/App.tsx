@@ -9,6 +9,7 @@ import { useChatStore } from './store/chatStore'
 
 export default function App() {
   const loadModels = useChatStore((state) => state.loadModels)
+  const loadStats = useChatStore((state) => state.loadStats)
   const setSessions = useChatStore((state) => state.setSessions)
   const setError = useChatStore((state) => state.setError)
 
@@ -21,6 +22,8 @@ export default function App() {
         const sessions = await api.sessions()
         if (cancelled) return
         setSessions(sessions.sessions)
+        // 全库用量统计：静默拉取，失败不影响主流程
+        void loadStats()
       } catch (error) {
         if (cancelled) return
         setError(
@@ -35,7 +38,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [loadModels, setError, setSessions])
+  }, [loadModels, loadStats, setError, setSessions])
 
   return (
     <div className="flex h-full min-h-0 bg-slate-50 text-slate-800">

@@ -278,10 +278,11 @@ python -m agent config check    # 打印将要使用的配置；密钥缺失时�
 > 必须用 `python -m pytest`（而不是裸 `pytest`）：测试通过包名 `agent.*` 导入，
 > 需要仓库根目录在 `sys.path` 上，`python -m` 会把当前目录加进去。
 
-当前全量：**278 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
-本轮新增 `tests/test_backend_service.py`：10 个 API 级冒烟用例（工作区切换 / 知识库 / 自定义模型）
-+ 1 条 SQLite 并发回归（4 线程并发读写工作区设置，防止 `sqlite3.ProgrammingError` 复发），
-全部 hermetic：配置与 SQLite 都在 `tmp_path`；总数从 267 增至 278。
+当前全量：**288 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
+后端用例：`tests/test_backend_service.py` 的 10 个 API 冒烟 + 1 条 SQLite 并发回归；
+本轮新增 10 条 token/缓存统计用例（`Usage` 双厂商缓存字段解析、`usage_json` 落库与回放、
+`/api/stats` 聚合），总数从 278 增至 288。
+前端：32 个测试文件 / 179 passed + 6 skipped（含 4 条状态栏与历史 usage 回放用例）。
 
 ## 如何新增一个工具
 
@@ -426,6 +427,7 @@ cd frontend && npm run dev                            # http://localhost:5173
 | PATCH | `/api/sessions/{id}/system_prompt` | `{system_prompt}` | `{session_id, system_prompt, created, seq}` |
 | POST | `/api/chat/stream` | `{session_id, message, model?}` | `text/event-stream` |
 | GET | `/api/health` | — | `{status:"ok", python, integrity, write_warning}`（含运行时诊断） |
+| GET | `/api/stats` | — | `{sessions, prompt_tokens, completion_tokens, total_tokens, cache_hit_tokens, cache_hit_rate}`（全库累计，底部状态栏用） |
 | GET | `/api/config/workspace` | — | `{workspace, default_workspace, is_default, extras:[{name, path, writable}]}` |
 | POST | `/api/config/workspace` | `{path, extras?:[{name, path, writable}]}` | 同上结构；合法 200、非法 400（切换后下一句话立即生效） |
 | DELETE | `/api/config/workspace` | — | 同上结构（恢复默认工作区并清空附加挂载） |
@@ -450,7 +452,7 @@ cd frontend && npm run dev                            # http://localhost:5173
 {"type":"tool_call_start","tool_call_id":"...","name":"read_file","arguments":"{\"path\": \"readme.txt\"}"}
 {"type":"tool_call_end","tool_call_id":"...","name":"read_file","ok":true,"content":"..."}
 {"type":"text_delta","delta":"..."}                    ← 真·逐 token
-{"type":"message_end","content":"...","reasoning":"...","usage":{"prompt_tokens":24,"completion_tokens":12,"total_tokens":36},"rounds":1,"tool_limit_reached":false}
+{"type":"message_end","content":"...","reasoning":"...","usage":{"prompt_tokens":24,"completion_tokens":12,"total_tokens":36,"cache_hit_tokens":18,"cache_hit_rate":0.75},"rounds":1,"tool_limit_reached":false}
 {"type":"error","message":"...","code":"ProviderAuthError"}
 ```
 
@@ -598,7 +600,7 @@ cd frontend && npm run test
 - [x] **三种用法示例**：`run "问题"` / `chat` / `sessions resume <id>`，均在 `## 运行`，附真实终端输出
 - [x] **如何新增一个模型**：`### 如何新增一个模型`（Moonshot 示例 + `.env` 步骤 + 真实 `config check` 输出）
 - [x] **如何新增一个工具**：`## 如何新增一个工具`（`get_time` 示例 + 5 步改动 + 真实 `tools list` / `run` 输出）
-- [x] **「设计决策」章节**：`## 设计决策`（62 条，含 Web 阶段的 34–62）
+- [x] **「设计决策」章节**：`## 设计决策`（63 条，含 Web 阶段的 34–63）
 
 Web 界面（第一阶段 CLI 之外的增量交付）：
 
@@ -619,6 +621,7 @@ Web 界面（第一阶段 CLI 之外的增量交付）：
 - [x] **多根工作区**：`@name` 命名挂载（`agent.extra_workspaces`），只读默认、越界红线不变（第 59 条）
 - [x] **文件 CRUD 工具**：`create_dir` / `delete_path` / `move_path`，权限报错改成可操作的人话（第 61–62 条）
 - [x] **运行时诊断**：`GET /api/health` 返回 `python` / `integrity` / `write_warning`（第 62 条②）
+- [x] **极客状态栏**：单轮 usage（含缓存命中率）+ `GET /api/stats` 全库累计 + 上下文占用率（第 63 条）
 
 ## 已知待办
 
@@ -1685,7 +1688,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 写 @libs 的要求: 模型自己拒绝（只读挂载），且 @libs 文件内容未被改动（PORT 仍 8080）
 ```
 
-`pytest` 仍 278 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
+`pytest` 仍 288 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
 
 ### 60. 目录选择器：点着选，不用手打绝对路径
 
@@ -1836,3 +1839,31 @@ Low 进程写 `D:\ProjectA` 一定失败。系统 python（`D:\python3.11\python
 main.py
 src/components/__init__.py
 ```
+
+### 63. Token 统计与「极客状态栏」：缓存命中率、上下文占用、实时 tok/s
+
+**需求**：底部状态栏静默展示「⚡ tok/s | 📚 累计 tok · 缓存命中 %」；每条 AI 消息底部显示本轮
+`prompt 1200 (命中 90%) / completion 50 / total 1250`。
+
+**后端**（三层，全部向后兼容）：
+- `agent/provider.py`：`Usage` 新增 `cache_hit_tokens`；`from_raw()` 同时兼容 DeepSeek 顶层
+  `prompt_cache_hit_tokens` 与 OpenAI 嵌套 `prompt_tokens_details.cached_tokens`，取不到为 0；
+  `cache_hit_rate` 在 prompt=0 时返回 0（不做除零）。
+- `agent/storage.py`：`sessions.cache_hit_tokens` 与 `messages.usage_json` 两列，`_migrate()`
+  自动给旧库补列；`add_usage(..., cache_hit_tokens=)` 累加；`get_messages(with_usage=True)` 才回放
+  `usage`（默认不带，绝不污染发回模型的请求）；新增 `usage_totals()` 全库聚合。
+- `backend/`：`message_end.usage` 透传 `cache_hit_tokens` / `cache_hit_rate`；新增只读接口
+  `GET /api/stats`；`/api/models` 补 `context_window` 供前端算上下文占用。
+
+**前端**：
+- 单条消息：usage 从 hover 操作区移到**常驻**的 10px 灰字行
+  （`prompt X (命中 Y%) / completion Z / total T`），历史消息由 `usage_json` 回放。
+- 全局状态栏（Composer 卡片底部）：`⚡ 最近一轮 tok/s | 📚 全库累计 · 缓存命中率 | 🌡️ 上下文占用`；
+  10px 低对比灰字，容器 `overflow-hidden` 保证不溢出卡片。
+- 口径：`tok/s = 本轮 completion_tokens / 客户端测得耗时`（仅实时可见）；
+  `上下文占用 ≈ 最近一轮 prompt_tokens / context_window`（单轮精确、多轮工具调用为近似值，仅作提示）；
+  全库命中率 = 累计 cache_hit_tokens / 累计 prompt_tokens（旧库无缓存字段会被按 0 计入）。
+
+**实测**（真实 deepseek，一句话）：`prompt 1624 (命中 87%) / completion 2 / total 1626`；
+`/api/stats` 同步累加，会话详情回放同一 usage。新增 10 条 pytest 用例覆盖双厂商字段解析、
+`usage_json` 落库/回放边界（默认不带、显式才带）、`/api/stats` 聚合与旧库迁移。

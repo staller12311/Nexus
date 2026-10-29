@@ -145,6 +145,25 @@ export function MessageBubbleInner({ message }: { message: ChatMessage }) {
           <ToolCard key={call.id} call={call} />
         ))}
 
+        {/* 单轮用量：常驻显示的极小灰字（不藏在 hover 操作区里），含缓存命中率 */}
+        {!isUser && message.usage && (
+          <div
+            data-testid="usage-line"
+            className="mt-1 flex flex-wrap items-center gap-x-1 text-[10px] leading-4 text-slate-400"
+          >
+            <span>
+              prompt {message.usage.prompt_tokens}
+              {message.usage.prompt_tokens > 0 && (
+                <>
+                  {' '}
+                  (命中 {Math.round((message.usage.cache_hit_tokens / message.usage.prompt_tokens) * 100)}%)
+                </>
+              )}{' '}
+              / completion {message.usage.completion_tokens} / total {message.usage.total_tokens}
+            </span>
+          </div>
+        )}
+
         {/* 悬停操作区：默认透明，hover/focus 时出现 */}
         <div
           className={`mt-1 flex h-5 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 ${
@@ -196,13 +215,6 @@ export function MessageBubbleInner({ message }: { message: ChatMessage }) {
           {message.interrupted && (
             <span className="rounded bg-amber-50 px-1 py-0.5 text-[10px] text-amber-600">
               已中断
-            </span>
-          )}
-
-          {message.usage && (
-            <span className="ml-1 text-[11px] text-slate-400">
-              prompt {message.usage.prompt_tokens} / completion {message.usage.completion_tokens} /
-              total {message.usage.total_tokens}
             </span>
           )}
         </div>

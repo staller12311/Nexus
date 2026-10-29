@@ -12,12 +12,15 @@ import type {
   SessionInfo,
   ToolCallStatus,
   Usage,
+  UsageStats,
   WorkspaceExtra,
 } from '../types'
 
 let counter = 0
 /** 正在进行的这一轮流式请求的中断句柄（不在响应式 state 里，避免无谓重渲染） */
 let activeAbort: AbortController | null = null
+/** 本轮流式请求的开始时间（算 tok/s 用；只在内存里） */
+let turnStartedAt = 0
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException
@@ -87,6 +90,19 @@ function parseUsage(raw: unknown): Usage | undefined {
     prompt_tokens: asNumber(usage.prompt_tokens),
     completion_tokens: asNumber(usage.completion_tokens),
     total_tokens: asNumber(usage.total_tokens),
+    cache_hit_tokens: asNumber(usage.cache_hit_tokens),
+  }
+}
+
+/** 把全库统计的响应规整成稳定形状（后端不可用/字段缺失时不产生 NaN）。 */
+function normalizeStats(raw: Partial<UsageStats> | null | undefined): UsageStats {
+  return {
+    sessions: asNumber(raw?.sessions),
+    prompt_tokens: asNumber(raw?.prompt_tokens),
+    completion_tokens: asNumber(raw?.completion_tokens),
+    total_tokens: asNumber(raw?.total_tokens),
+    cache_hit_tokens: asNumber(raw?.cache_hit_tokens),
+    cache_hit_rate: typeof raw?.cache_hit_rate === 'number' ? raw.cache_hit_rate : 0,
   }
 }
 
@@ -119,7 +135,16 @@ type ChatState = {
   workspaceDefault: string | null
   /** 附加目录（@name 命名挂载） */
   workspaceExtras: WorkspaceExtra[]
+  // ---- 用量统计（底部状态栏） ----
+  /** 全库累计用量（GET /api/stats；null = 还没拉到 / 后端不可用） */
+  stats: UsageStats | null
+  /** 当前会话上下文占用率 0–1（最近一轮 prompt_tokens / 模型 context_window） */
+  contextUsage: number | null
+  /** 最近一轮生成速度（completion_tokens / 秒）；只在实时流式后可见 */
+  lastTokensPerSecond: number | null
   loadWorkspace: () => Promise<void>
+  /** 静默刷新全库 token 统计（失败不打扰） */
+  loadStats: () => Promise<void>
   setWorkspace: (path: string, extras?: WorkspaceExtra[]) => Promise<void>
   resetWorkspace: () => Promise<void>
   loadKb: () => Promise<void>
@@ -200,6 +225,9 @@ const initialState = {
   workspace: null as string | null,
   workspaceDefault: null as string | null,
   workspaceExtras: [] as WorkspaceExtra[],
+  stats: null as UsageStats | null,
+  contextUsage: null as number | null,
+  lastTokensPerSecond: null as number | null,
 }
 
 // 流式文本的节流缓冲：每 FLUSH_INTERVAL_MS 才真正 set 一次 state，
@@ -287,13 +315,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     try {
       const detail = await api.session(sessionId)
+      const messages = reconstructMessages(detail.messages, `s-${detail.session.id}`)
+      const modelName = detail.session.model || get().model
+      const contextWindow = get().models.find((item) => item.name === modelName)?.context_window
+      const lastAssistant = [...messages].reverse().find((item) => item.role === 'assistant' && item.usage)
+      const lastUsage = lastAssistant?.usage
       set({
         sessionId: detail.session.id,
-        model: detail.session.model || get().model,
-        messages: reconstructMessages(detail.messages, `s-${detail.session.id}`),
+        model: modelName,
+        messages,
         streaming: false,
         error: null,
         systemPrompt: detail.system_prompt ?? '',
+        // 用最近一轮的 prompt_tokens 估算上下文占用（历史消息可能没有 usage）
+        contextUsage:
+          lastUsage && contextWindow && lastUsage.prompt_tokens > 0
+            ? Math.min(lastUsage.prompt_tokens / contextWindow, 1)
+            : null,
+        lastTokensPerSecond: null,
       })
     } catch (error) {
       set({ error: error instanceof Error ? error.message : '打开会话失败' })
@@ -350,6 +389,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })
     } catch {
       // 后端不可用时静默：徽章仍显示默认文案
+    }
+  },
+
+  loadStats: async () => {
+    try {
+      set({ stats: normalizeStats(await api.stats()) })
+    } catch {
+      // 静默：统计是锦上添花，后端不可用时不显示即可
     }
   },
 
@@ -632,6 +679,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     let sessionId = get().sessionId
     const controller = new AbortController()
     activeAbort = controller
+    turnStartedAt = Date.now()
     try {
       if (!sessionId) {
         // 新会话第一次发言：先建会话（模块 5 会把历史列表刷新接进来）
@@ -718,6 +766,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const controller = new AbortController()
     activeAbort = controller
+    turnStartedAt = Date.now()
     try {
       await streamRegenerate({
         sessionId,
@@ -809,7 +858,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
           ...(usage ? { usage } : {}),
         }
       }
-      return { messages, streaming: false }
+      // 上下文占用率：本轮 prompt_tokens / 当前模型 context_window（单轮场景是精确值，
+      // 多轮工具调用时是近似值 —— 只做「静默提示」，不参与逻辑判断）
+      const contextWindow = state.models.find((item) => item.name === state.model)?.context_window
+      const contextUsage =
+        usage && contextWindow && usage.prompt_tokens > 0
+          ? Math.min(usage.prompt_tokens / contextWindow, 1)
+          : state.contextUsage
+      // 生成速度：本轮 completion_tokens / 实际耗时（客户端侧测量，仅实时可见）
+      const elapsedSeconds = turnStartedAt > 0 ? (Date.now() - turnStartedAt) / 1000 : 0
+      const lastTokensPerSecond =
+        usage && usage.completion_tokens > 0 && elapsedSeconds > 0
+          ? usage.completion_tokens / elapsedSeconds
+          : state.lastTokensPerSecond
+      return { messages, streaming: false, contextUsage, lastTokensPerSecond }
     })
+    // 一轮结束后静默刷新全库统计（失败不打扰用户）
+    void get().loadStats()
   },
 }))

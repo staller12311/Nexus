@@ -527,3 +527,41 @@ def test_from_config_wires_agent_settings(tmp_path: Any) -> None:
     assert provider.request_timeout == 12.0
     assert provider.max_retries == 5
     assert provider.model_name == "test-model"
+
+# ================================================================== 缓存命中
+class TestUsageCacheParsing:
+    """Usage 解析两种主流缓存字段：DeepSeek 顶层 / OpenAI 嵌套。"""
+
+    def test_deepseek_prompt_cache_hit_tokens(self) -> None:
+        raw = SimpleNamespace(
+            prompt_tokens=100,
+            completion_tokens=20,
+            total_tokens=120,
+            prompt_cache_hit_tokens=80,
+        )
+        usage = Usage.from_raw(raw)
+        assert usage.cache_hit_tokens == 80
+        assert usage.cache_hit_rate == pytest.approx(0.8)
+
+    def test_openai_nested_cached_tokens(self) -> None:
+        raw = {
+            "prompt_tokens": 200,
+            "completion_tokens": 10,
+            "total_tokens": 210,
+            "prompt_tokens_details": {"cached_tokens": 150},
+        }
+        usage = Usage.from_raw(raw)
+        assert usage.cache_hit_tokens == 150
+        assert usage.cache_hit_rate == pytest.approx(0.75)
+
+    def test_missing_cache_fields_default_to_zero(self) -> None:
+        usage = Usage.from_raw({"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12})
+        assert usage.cache_hit_tokens == 0
+        assert usage.cache_hit_rate == 0.0
+        assert Usage.from_raw(None).cache_hit_rate == 0.0
+        # 没有 prompt token 时不用 0 做除数
+        assert Usage(prompt_tokens=0, cache_hit_tokens=3).cache_hit_rate == 0.0
+
+    def test_usage_add_accumulates_cache(self) -> None:
+        total = Usage(10, 2, 12, 7) + Usage(5, 1, 6, 3)
+        assert total == Usage(15, 3, 18, 10)

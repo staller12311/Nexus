@@ -1,7 +1,17 @@
-import type { ApiMessage, ChatMessage, ToolCallView } from '../types'
+import type { ApiMessage, ChatMessage, ToolCallView, Usage } from '../types'
 
 /** agent 侧工具错误的统一前缀（agent/registry.py 的 ERROR_PREFIX）。 */
 const ERROR_PREFIX = '错误：'
+
+/** 后端 usage 可能是旧格式（没有 cache_hit_tokens），这里统一补齐默认值。 */
+function normalizeUsage(raw: Usage): Usage {
+  return {
+    prompt_tokens: Number(raw.prompt_tokens) || 0,
+    completion_tokens: Number(raw.completion_tokens) || 0,
+    total_tokens: Number(raw.total_tokens) || 0,
+    cache_hit_tokens: Number(raw.cache_hit_tokens) || 0,
+  }
+}
 
 /**
  * 把后端返回的 OpenAI 原生消息序列，还原成 UI 用的「气泡 + 工具卡片」结构。
@@ -59,6 +69,8 @@ export function reconstructMessages(messages: ApiMessage[], idPrefix = 'h'): Cha
         ...(toolCalls.length > 0 ? { toolCalls } : {}),
         // 历史里的思维链是已完成的（不是流式中），折叠面板默认收起
         ...(reasoning ? { reasoning, reasoningStreaming: false } : {}),
+        // 单轮 usage（含缓存命中）：旧库/旧消息没有这一项
+        ...(message.usage ? { usage: normalizeUsage(message.usage) } : {}),
       })
     }
   }

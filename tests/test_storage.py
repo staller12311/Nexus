@@ -458,3 +458,78 @@ def test_null_handler_when_no_output_targets() -> None:
 
 def test_force_utf8_stdio_does_not_raise() -> None:
     logging_setup.force_utf8_stdio()
+
+# ============================================================ usage / 缓存命中
+def test_add_usage_accumulates_cache_hit_tokens(storage: Storage) -> None:
+    session = storage.create_session("m")
+    storage.add_usage(
+        session.id,
+        prompt_tokens=100,
+        completion_tokens=20,
+        total_tokens=120,
+        cache_hit_tokens=80,
+    )
+    storage.add_usage(
+        session.id,
+        prompt_tokens=50,
+        completion_tokens=10,
+        total_tokens=60,
+        cache_hit_tokens=25,
+    )
+    record = storage.require_session(session.id)
+    assert (record.prompt_tokens, record.completion_tokens, record.total_tokens) == (150, 30, 180)
+    assert record.cache_hit_tokens == 105
+    assert storage.usage_totals() == {
+        "sessions": 1,
+        "prompt_tokens": 150,
+        "completion_tokens": 30,
+        "total_tokens": 180,
+        "cache_hit_tokens": 105,
+    }
+
+
+def test_message_usage_persisted_but_hidden_from_model_history(storage: Storage) -> None:
+    session = storage.create_session("m")
+    storage.append_message(session.id, {"role": "user", "content": "hi"})
+    storage.append_message(
+        session.id,
+        {"role": "assistant", "content": "yo"},
+        usage={
+            "prompt_tokens": 12,
+            "completion_tokens": 3,
+            "total_tokens": 15,
+            "cache_hit_tokens": 9,
+        },
+    )
+
+    visible = storage.get_messages(session.id, with_usage=True)
+    assert visible[1]["usage"]["cache_hit_tokens"] == 9
+    # 默认回放（发给模型的历史）里绝不能出现 usage
+    assert all("usage" not in message for message in storage.get_messages(session.id))
+
+
+def test_old_database_gets_cache_and_usage_columns(tmp_path: Path) -> None:
+    """老库（没有 cache_hit_tokens / usage_json）打开时自动补齐列。"""
+    path = tmp_path / "old.db"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        "CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '',"
+        " model TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);"
+        "CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " session_id TEXT NOT NULL, seq INTEGER NOT NULL, role TEXT NOT NULL, content TEXT,"
+        " tool_calls TEXT, tool_call_id TEXT, name TEXT, created_at TEXT NOT NULL,"
+        " UNIQUE (session_id, seq));"
+    )
+    connection.commit()
+    connection.close()
+
+    with Storage(path) as migrated:
+        session = migrated.create_session("m")
+        migrated.add_usage(session.id, prompt_tokens=5, cache_hit_tokens=2)
+        assert migrated.require_session(session.id).cache_hit_tokens == 2
+        migrated.append_message(
+            session.id,
+            {"role": "assistant", "content": "ok"},
+            usage={"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6, "cache_hit_tokens": 2},
+        )
+        assert migrated.get_messages(session.id, with_usage=True)[0]["usage"]["cache_hit_tokens"] == 2

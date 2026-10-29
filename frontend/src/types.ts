@@ -7,6 +7,8 @@ export type ModelInfo = {
   api_key_env: string
   key_set: boolean
   is_default: boolean
+  /** 上下文窗口大小（前端算「上下文占用率」用） */
+  context_window: number
   /** 是否是 Web 端添加的自定义模型（config.yaml 里的为 false） */
   is_custom: boolean
   has_key: boolean
@@ -47,6 +49,19 @@ export type Usage = {
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
+  /** 缓存命中的 prompt token 数（DeepSeek / OpenAI 等；取不到为 0） */
+  cache_hit_tokens: number
+}
+
+/** 全库累计用量（GET /api/stats），底部状态栏静默展示 */
+export type UsageStats = {
+  sessions: number
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  cache_hit_tokens: number
+  /** 0–1 的整体缓存命中率 */
+  cache_hit_rate: number
 }
 
 export type ToolCallStatus = 'pending' | 'success' | 'error'
@@ -89,6 +104,8 @@ export type ApiMessage = {
   name?: string | null
   /** 已落库的思维链（旧消息没有这一项） */
   reasoning_content?: string | null
+  /** 当轮 token 用量（旧消息没有这一项）；只用于展示，不会回传给模型 */
+  usage?: Usage | null
 }
 
 /** 知识库文档（GET /api/kb/docs） */

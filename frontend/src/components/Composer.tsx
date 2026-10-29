@@ -11,6 +11,18 @@ const SANDBOX_HINT =
 /** textarea 自适应高度的上限，与 class 里的 max-h-48（12rem/192px）保持一致 */
 const TEXTAREA_MAX_HEIGHT = 192
 
+/** 把 token 总量压成紧凑写法：12500 → 12.5K，591000000 → 591M */
+function formatTokens(value: number): string {
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(value >= 10_000_000_000 ? 0 : 1)}B`
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}K`
+  return String(Math.max(0, Math.round(value)))
+}
+
+function formatPercent(rate: number): string {
+  return `${Math.round(Math.max(0, Math.min(rate, 1)) * 100)}%`
+}
+
 export function Composer() {
   const draft = useChatStore((state) => state.draft)
   const setDraft = useChatStore((state) => state.setDraft)
@@ -22,6 +34,9 @@ export function Composer() {
   const uploadKbDocs = useChatStore((state) => state.uploadKbDocs)
   const workspace = useChatStore((state) => state.workspace)
   const loadWorkspace = useChatStore((state) => state.loadWorkspace)
+  const stats = useChatStore((state) => state.stats)
+  const contextUsage = useChatStore((state) => state.contextUsage)
+  const lastTokensPerSecond = useChatStore((state) => state.lastTokensPerSecond)
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
@@ -169,12 +184,29 @@ export function Composer() {
             </div>
           </div>
 
-          {/* 底部状态栏：极小、低对比度灰字，收在卡片内部 */}
+          {/* 底部状态栏：极小、低对比度灰字，收在卡片内部；全局统计静默展示 */}
           <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-3.5 py-0.5 text-[10px] leading-4 text-slate-400">
-            <span className="truncate">
+            <span className="shrink-0 truncate">
               {streaming ? 'AI 正在回答……' : 'Enter 发送 · Shift+Enter 换行'}
             </span>
-            <span className="shrink-0">内容由模型生成，请自行核对</span>
+            <span className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap">
+              {lastTokensPerSecond !== null && lastTokensPerSecond > 0 && (
+                <span className="shrink-0" title="最近一轮生成速度（客户端实测）">
+                  ⚡ {Math.round(lastTokensPerSecond)} tok/s
+                </span>
+              )}
+              {stats && stats.total_tokens > 0 && (
+                <span className="shrink-0" title="全库累计消耗 · 整体缓存命中率">
+                  📚 {formatTokens(stats.total_tokens)} tok · 命中 {formatPercent(stats.cache_hit_rate)}
+                </span>
+              )}
+              {contextUsage !== null && (
+                <span className="shrink-0" title="当前会话上下文占用率（约值）">
+                  🌡️ {formatPercent(contextUsage)}
+                </span>
+              )}
+            </span>
+            <span className="hidden shrink-0 md:inline">内容由模型生成，请自行核对</span>
           </div>
         </div>
 

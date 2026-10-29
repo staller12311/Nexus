@@ -347,3 +347,62 @@ def test_custom_model_duplicate_and_missing_delete(api) -> None:
     missing = client.delete("/api/models/custom/no-such-model")
     assert missing.status_code == 404
     assert "找不到" in missing.json()["detail"]
+
+# ---------------------------------------------------------------- 用量统计
+def test_stats_endpoint_aggregates_usage_and_cache_rate(api) -> None:
+    """GET /api/stats：跨会话聚合 token 用量，并按 prompt 算整体缓存命中率。"""
+    client, service, _config = api
+    with service._storage() as storage:
+        first = storage.create_session("fake")
+        storage.add_usage(
+            first.id,
+            prompt_tokens=100,
+            completion_tokens=20,
+            total_tokens=120,
+            cache_hit_tokens=80,
+        )
+        second = storage.create_session("fake")
+        storage.add_usage(
+            second.id,
+            prompt_tokens=50,
+            completion_tokens=10,
+            total_tokens=60,
+            cache_hit_tokens=25,
+        )
+
+    body = client.get("/api/stats").json()
+    assert body["sessions"] == 2
+    assert body["prompt_tokens"] == 150
+    assert body["completion_tokens"] == 30
+    assert body["total_tokens"] == 180
+    assert body["cache_hit_tokens"] == 105
+    assert body["cache_hit_rate"] == 0.7  # 105 / 150
+
+
+def test_session_detail_returns_persisted_usage(api) -> None:
+    """会话详情要带每条 assistant 消息的当轮 usage（含缓存命中），供前端回放。"""
+    client, service, _config = api
+    with service._storage() as storage:
+        session = storage.create_session("fake")
+        storage.append_message(session.id, {"role": "user", "content": "hi"})
+        storage.append_message(
+            session.id,
+            {"role": "assistant", "content": "yo"},
+            usage={
+                "prompt_tokens": 24,
+                "completion_tokens": 12,
+                "total_tokens": 36,
+                "cache_hit_tokens": 18,
+            },
+        )
+
+    messages = client.get(f"/api/sessions/{session.id}").json()["messages"]
+    assistant = [message for message in messages if message["role"] == "assistant"][0]
+    assert assistant["usage"]["cache_hit_tokens"] == 18
+    assert assistant["usage"]["prompt_tokens"] == 24
+
+
+def test_models_expose_context_window(api) -> None:
+    client, _service, _config = api
+    models = {item["name"]: item for item in client.get("/api/models").json()}
+    assert models["fake"]["context_window"] > 0

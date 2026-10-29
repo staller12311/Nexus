@@ -89,6 +89,7 @@ describe('chatStore.sendMessage 消费 SSE', () => {
       prompt_tokens: 24,
       completion_tokens: 12,
       total_tokens: 36,
+      cache_hit_tokens: 0,
     })
     expect(assistant.toolCalls).toHaveLength(1)
     expect(assistant.toolCalls?.[0]).toMatchObject({

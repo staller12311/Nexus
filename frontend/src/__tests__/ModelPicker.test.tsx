@@ -13,6 +13,7 @@ function builtin(): ModelInfo {
     api_key_env: 'DEEPSEEK_API_KEY',
     key_set: true,
     is_default: true,
+    context_window: 65536,
     is_custom: false,
     has_key: true,
     api_key_masked: '',

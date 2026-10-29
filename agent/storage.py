@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     updated_seq INTEGER NOT NULL DEFAULT 0,
     prompt_tokens     INTEGER NOT NULL DEFAULT 0,
     completion_tokens INTEGER NOT NULL DEFAULT 0,
-    total_tokens      INTEGER NOT NULL DEFAULT 0
+    total_tokens      INTEGER NOT NULL DEFAULT 0,
+    cache_hit_tokens  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -44,6 +45,7 @@ CREATE TABLE IF NOT EXISTS messages (
     tool_call_id TEXT,
     name         TEXT,
     reasoning_content TEXT,
+    usage_json   TEXT,
     created_at   TEXT NOT NULL,
     UNIQUE (session_id, seq)
 );
@@ -67,6 +69,7 @@ class SessionRecord:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    cache_hit_tokens: int = 0
 
 
 def utc_now() -> str:
@@ -143,18 +146,20 @@ class Storage:
                 "ALTER TABLE sessions ADD COLUMN updated_seq INTEGER NOT NULL DEFAULT 0"
             )
             self._conn.execute("UPDATE sessions SET updated_seq = rowid")
-        for column in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        for column in ("prompt_tokens", "completion_tokens", "total_tokens", "cache_hit_tokens"):
             if column not in columns:
                 self._conn.execute(
                     f"ALTER TABLE sessions ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
                 )
 
-        # messages 后加的列：思维链（允许为空，旧行自然是 NULL）
+        # messages 后加的列：思维链 + 单条消息的 usage（缓存命中统计要用）
         message_columns = {
             row["name"] for row in self._conn.execute("PRAGMA table_info(messages)")
         }
         if "reasoning_content" not in message_columns:
             self._conn.execute("ALTER TABLE messages ADD COLUMN reasoning_content TEXT")
+        if "usage_json" not in message_columns:
+            self._conn.execute("ALTER TABLE messages ADD COLUMN usage_json TEXT")
 
     def _next_seq(self) -> int:
         """下一个逻辑序号（会话顺序的唯一依据）。调用方需处于事务中。"""
@@ -286,17 +291,38 @@ class Storage:
         prompt_tokens: int = 0,
         completion_tokens: int = 0,
         total_tokens: int = 0,
+        cache_hit_tokens: int = 0,
     ) -> SessionRecord:
         """把一次（或一轮）模型调用的 token 用量累加到会话记录上。"""
         self.require_session(session_id)
         with self._conn:
             self._conn.execute(
                 "UPDATE sessions SET prompt_tokens = prompt_tokens + ?,"
-                " completion_tokens = completion_tokens + ?, total_tokens = total_tokens + ?"
+                " completion_tokens = completion_tokens + ?, total_tokens = total_tokens + ?,"
+                " cache_hit_tokens = cache_hit_tokens + ?"
                 " WHERE id = ?",
-                (int(prompt_tokens), int(completion_tokens), int(total_tokens), session_id),
+                (
+                    int(prompt_tokens),
+                    int(completion_tokens),
+                    int(total_tokens),
+                    int(cache_hit_tokens),
+                    session_id,
+                ),
             )
         return self.require_session(session_id)
+
+    def usage_totals(self) -> dict[str, int]:
+        """全库聚合：所有会话的累计用量（/api/stats 用）。"""
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS sessions,"
+            " COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,"
+            " COALESCE(SUM(completion_tokens), 0) AS completion_tokens,"
+            " COALESCE(SUM(total_tokens), 0) AS total_tokens,"
+            " COALESCE(SUM(cache_hit_tokens), 0) AS cache_hit_tokens"
+            " FROM sessions"
+        ).fetchone()
+        keys = ("sessions", "prompt_tokens", "completion_tokens", "total_tokens", "cache_hit_tokens")
+        return {key: int(row[key]) for key in keys}
 
     # ---- 消息 -----------------------------------------------------------
     def append_message(
@@ -305,15 +331,17 @@ class Storage:
         message: Mapping[str, Any],
         *,
         reasoning: str | None = None,
+        usage: Mapping[str, Any] | None = None,
     ) -> int:
         """追加一条消息，返回其 seq（从 1 开始）。
 
-        ``reasoning`` 单独传参（而不是塞进 message）：因为 message 会原样进入
-        ``request_messages()`` 发给模型，OpenAI 协议里没有 ``reasoning_content``
-        这个字段，混进去会让部分严格校验的上游 400。它只写进库、只回放给前端。
+        ``reasoning`` / ``usage`` 单独传参（而不是塞进 message）：因为 message 会原样进入
+        ``request_messages()`` 发给模型，OpenAI 协议里没有这两个字段，混进去会让部分严格
+        校验的上游 400。它们只写进库、只回放给前端（``get_messages(with_usage=True)``）。
         """
         normalized = normalize_message(message)
         reasoning_text = (reasoning or "").strip() or None
+        usage_text = json.dumps(dict(usage), ensure_ascii=False) if usage else None
         with self._conn:
             exists = self._conn.execute(
                 "SELECT 1 FROM sessions WHERE id = ?", (session_id,)
@@ -329,8 +357,8 @@ class Storage:
             now = utc_now()
             self._conn.execute(
                 "INSERT INTO messages (session_id, seq, role, content, tool_calls,"
-                " tool_call_id, name, reasoning_content, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " tool_call_id, name, reasoning_content, usage_json, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     session_id,
                     seq,
@@ -342,6 +370,7 @@ class Storage:
                     normalized.get("tool_call_id"),
                     normalized.get("name"),
                     reasoning_text,
+                    usage_text,
                     now,
                 ),
             )
@@ -357,12 +386,17 @@ class Storage:
         return [self.append_message(session_id, message) for message in messages]
 
     def get_messages(
-        self, session_id: str, limit: int | None = None, *, with_reasoning: bool = False
+        self,
+        session_id: str,
+        limit: int | None = None,
+        *,
+        with_reasoning: bool = False,
+        with_usage: bool = False,
     ) -> list[dict[str, Any]]:
         """按时间升序返回消息；limit 表示只取**最近** limit 条。
 
-        ``with_reasoning=False``（默认，给 agent 回放用）时不带 ``reasoning_content``，
-        保证发回模型的消息严格符合 OpenAI 协议。
+        ``with_reasoning`` / ``with_usage`` 默认 False（给 agent 回放用）：这两个字段
+        只给前端展示，不能出现在发回模型的请求里。
         """
         self.require_session(session_id)
         if limit is not None and limit <= 0:
@@ -378,7 +412,7 @@ class Storage:
                 " ORDER BY seq DESC LIMIT ?) ORDER BY seq ASC",
                 (session_id, limit),
             ).fetchall()
-        return [self._row_to_message(row, with_reasoning) for row in rows]
+        return [self._row_to_message(row, with_reasoning, with_usage) for row in rows]
 
     def count_messages(self, session_id: str) -> int:
         self.require_session(session_id)
@@ -444,10 +478,13 @@ class Storage:
             prompt_tokens=pick_int("prompt_tokens"),
             completion_tokens=pick_int("completion_tokens"),
             total_tokens=pick_int("total_tokens"),
+            cache_hit_tokens=pick_int("cache_hit_tokens"),
         )
 
     @staticmethod
-    def _row_to_message(row: sqlite3.Row, with_reasoning: bool = False) -> dict[str, Any]:
+    def _row_to_message(
+        row: sqlite3.Row, with_reasoning: bool = False, with_usage: bool = False
+    ) -> dict[str, Any]:
         message: dict[str, Any] = {"role": row["role"]}
         if row["content"] is not None:
             message["content"] = row["content"]
@@ -459,4 +496,9 @@ class Storage:
             message["name"] = row["name"]
         if with_reasoning and row["reasoning_content"]:
             message["reasoning_content"] = row["reasoning_content"]
+        if with_usage and row["usage_json"]:
+            try:
+                message["usage"] = json.loads(row["usage_json"])
+            except (TypeError, ValueError):  # pragma: no cover - 旧库脏数据
+                pass
         return message

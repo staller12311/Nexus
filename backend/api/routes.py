@@ -48,6 +48,7 @@ from .schemas import (
     SessionOut,
     SessionsOut,
     SessionUpdateIn,
+    StatsOut,
     SystemPromptIn,
     SystemPromptOut,
     TitleOut,
@@ -91,6 +92,16 @@ def list_models(request: Request) -> list[ModelOut]:
 def list_tools(request: Request) -> ToolsOut:
     service = get_service(request)
     return ToolsOut(tools=[ToolOut(**asdict(info)) for info in service.list_tools()])
+
+
+@router.get(
+    "/stats",
+    response_model=StatsOut,
+    summary="全库累计 token 用量与整体缓存命中率",
+)
+def get_stats(request: Request) -> StatsOut:
+    service = get_service(request)
+    return StatsOut(**service.stats())
 
 
 # ---------------------------------------------------------------- 自定义模型

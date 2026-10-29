@@ -14,6 +14,7 @@ class ModelOut(BaseModel):
     api_key_env: str = Field(description="密钥所在的环境变量名（永远不返回密钥值）")
     key_set: bool = Field(description="该环境变量是否已设置")
     is_default: bool = Field(description="是否为 default_model")
+    context_window: int = Field(default=32768, description="上下文窗口，用于前端算上下文占用率")
     is_custom: bool = Field(default=False, description="是否是 Web 端添加的自定义模型")
     has_key: bool = Field(default=True, description="是否已有可用密钥")
     api_key_masked: str = Field(
@@ -119,6 +120,19 @@ class ToolsOut(BaseModel):
     tools: list["ToolOut"]
 
 
+class StatsOut(BaseModel):
+    """全库累计用量（GET /api/stats），供前端底部状态栏静默展示。"""
+
+    sessions: int = Field(description="会话总数")
+    prompt_tokens: int = Field(description="所有会话累计 prompt tokens")
+    completion_tokens: int = Field(description="所有会话累计 completion tokens")
+    total_tokens: int = Field(description="所有会话累计消耗")
+    cache_hit_tokens: int = Field(description="累计缓存命中的 prompt tokens")
+    cache_hit_rate: float = Field(
+        description="整体缓存命中率（0–1）= cache_hit_tokens / prompt_tokens"
+    )
+
+
 class ToolOut(BaseModel):
     name: str
     enabled: bool
@@ -151,6 +165,8 @@ class MessageOut(BaseModel):
     name: str | None = None
     #: 思维链（旧库/旧消息为 None）；只在会话详情里返回，不会回传给模型
     reasoning_content: str | None = None
+    #: 当轮 token 用量（含缓存命中）；旧消息为 None，同样不参与模型请求
+    usage: dict[str, Any] | None = None
 
 
 class SessionDetailOut(BaseModel):

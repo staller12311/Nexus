@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from .config import AppConfig
@@ -268,8 +268,11 @@ class AgentLoop:
 
             result = ChatResult(content=content, tool_calls=tool_calls, usage=usage)
             assistant_message = self.build_assistant_message(result)
-            # 思维链随 assistant 消息一起落库（只给前端回放，不进请求）
-            self._add_message(assistant_message, reasoning=event_reasoning)
+            # 思维链与单轮 usage 随 assistant 消息一起落库（只给前端回放，不进请求）
+            usage_payload = asdict(usage) if usage.total_tokens or usage.prompt_tokens else None
+            self._add_message(
+                assistant_message, reasoning=event_reasoning, usage=usage_payload
+            )
 
             if not result.wants_tools:
                 yield {
@@ -394,17 +397,23 @@ class AgentLoop:
 
     # ---- 持久化 ---------------------------------------------------------
     def _add_message(
-        self, message: Mapping[str, Any], *, reasoning: str | None = None
+        self,
+        message: Mapping[str, Any],
+        *,
+        reasoning: str | None = None,
+        usage: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """加入内存历史并落库。
 
-        ``reasoning`` 只落库（前端回放用），**不**进入 ``self._messages``，
-        避免下次请求把它当成 OpenAI 字段发给模型。
+        ``reasoning`` / ``usage`` 只落库（前端回放用），**不**进入 ``self._messages``，
+        避免下次请求把它们当成 OpenAI 字段发给模型。
         """
         record = dict(message)
         self._messages.append(record)
         if self.storage is not None and self.session_id:
-            self.storage.append_message(self.session_id, record, reasoning=reasoning)
+            self.storage.append_message(
+                self.session_id, record, reasoning=reasoning, usage=usage
+            )
         return record
 
     def _record_usage(self, usage: Usage) -> None:
@@ -415,4 +424,5 @@ class AgentLoop:
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,
             total_tokens=usage.total_tokens,
+            cache_hit_tokens=usage.cache_hit_tokens,
         )

@@ -147,23 +147,51 @@ class Usage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    #: 缓存命中的 prompt token 数（DeepSeek / OpenAI 等厂商的「省钱指标」）
+    #: 取不到就是 0，绝不影响主流程。
+    cache_hit_tokens: int = 0
+
+    @property
+    def cache_hit_rate(self) -> float:
+        """缓存命中率（0.0–1.0）；没有 prompt token 时按 0 处理。"""
+        if self.prompt_tokens <= 0:
+            return 0.0
+        return min(self.cache_hit_tokens / self.prompt_tokens, 1.0)
 
     @classmethod
     def from_raw(cls, raw: Any) -> "Usage":
         if raw is None:
             return cls()
 
+        def field(source: Any, key: str) -> Any:
+            if source is None:
+                return None
+            if isinstance(source, Mapping):
+                return source.get(key)
+            return getattr(source, key, None)
+
         def pick(key: str) -> int:
-            value = raw.get(key) if isinstance(raw, Mapping) else getattr(raw, key, None)
             try:
-                return int(value or 0)
+                return int(field(raw, key) or 0)
             except (TypeError, ValueError):
                 return 0
+
+        # 缓存命中字段的两种主流写法：
+        # - DeepSeek: usage.prompt_cache_hit_tokens（顶层）
+        # - OpenAI:   usage.prompt_tokens_details.cached_tokens（嵌套）
+        # 都取不到就是 0；两边都有时以非零的那个为准。
+        details = field(raw, "prompt_tokens_details")
+        try:
+            nested_cached = int(field(details, "cached_tokens") or 0)
+        except (TypeError, ValueError):
+            nested_cached = 0
+        cache_hit_tokens = pick("prompt_cache_hit_tokens") or nested_cached
 
         return cls(
             prompt_tokens=pick("prompt_tokens"),
             completion_tokens=pick("completion_tokens"),
             total_tokens=pick("total_tokens"),
+            cache_hit_tokens=cache_hit_tokens,
         )
 
     def __add__(self, other: "Usage") -> "Usage":
@@ -171,6 +199,7 @@ class Usage:
             self.prompt_tokens + other.prompt_tokens,
             self.completion_tokens + other.completion_tokens,
             self.total_tokens + other.total_tokens,
+            self.cache_hit_tokens + other.cache_hit_tokens,
         )
 
 

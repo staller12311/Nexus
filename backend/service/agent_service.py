@@ -49,6 +49,8 @@ _TITLE_NOISE = re.compile(r"[\s\"'“”‘’《》「」【】\[\]()（）<>.,
 _TITLE_PREFIX = re.compile(r"^(标题|topic|title)\s*[:：]?\s*", re.IGNORECASE)
 
 DEFAULT_SESSION_LIMIT = 20
+#: 自定义模型没有 context_window 字段时的保守默认值（OpenAI 兼容端点的常见下限）
+DEFAULT_CONTEXT_WINDOW = 32768
 #: 需要显式配置白名单、默认禁用的工具（与 README 第 14/16 条一致）
 DEFAULT_DISABLED_TOOLS = frozenset({"run_shell", "http_get"})
 #: 自动起标题用的提示词（第 45 条）
@@ -70,6 +72,8 @@ class ModelInfo:
     api_key_env: str
     key_set: bool
     is_default: bool
+    #: 上下文窗口（用于前端显示当前会话的上下文占用率；自定义模型没有该字段）
+    context_window: int = DEFAULT_CONTEXT_WINDOW
     #: 来自 Web 端添加（而不是 config.yaml）
     is_custom: bool = False
     #: 是否已有可用密钥（内置=环境变量有值；自定义=库里存了）
@@ -236,6 +240,7 @@ class AgentService:
                 api_key_env=model.api_key_env,
                 key_set=bool(os.environ.get(model.api_key_env, "").strip()),
                 is_default=(name == self.config.default_model),
+                context_window=model.context_window,
                 is_custom=False,
                 has_key=bool(os.environ.get(model.api_key_env, "").strip()),
                 api_key_masked="",  # 内置模型的密钥后端从不读取明文，也就给不出掩码
@@ -251,6 +256,7 @@ class AgentService:
                     api_key_env="(自定义)",
                     key_set=bool(custom.api_key.strip()),
                     is_default=False,
+                    context_window=DEFAULT_CONTEXT_WINDOW,
                     is_custom=True,
                     has_key=bool(custom.api_key.strip()),
                     api_key_masked=custom.masked_key,
@@ -412,11 +418,21 @@ class AgentService:
     def get_session(self, session_id: str) -> tuple[SessionInfo, list[dict[str, Any]]]:
         with self._storage() as storage:
             record = storage.find_session(session_id)  # 支持唯一短前缀，与 CLI 一致
-            # 详情接口要回放思维链；agent 的历史回放（chat/chat_stream）不带它
+            # 详情接口要回放思维链与单条 usage；agent 的历史回放（chat/chat_stream）不带
             return (
                 self._to_session_info(record),
-                storage.get_messages(record.id, with_reasoning=True),
+                storage.get_messages(record.id, with_reasoning=True, with_usage=True),
             )
+
+    def stats(self) -> dict[str, Any]:
+        """全库累计用量（/api/stats）：会话数、token 总量与整体缓存命中率。"""
+        with self._storage() as storage:
+            totals = storage.usage_totals()
+        prompt_tokens = totals["prompt_tokens"]
+        totals["cache_hit_rate"] = (
+            round(totals["cache_hit_tokens"] / prompt_tokens, 4) if prompt_tokens > 0 else 0.0
+        )
+        return totals
 
     def create_session(self, model: str | None = None, title: str = "") -> SessionInfo:
         model_name = model or self.config.default_model
@@ -661,6 +677,8 @@ class AgentService:
                                 "prompt_tokens": result.usage.prompt_tokens,
                                 "completion_tokens": result.usage.completion_tokens,
                                 "total_tokens": result.usage.total_tokens,
+                                "cache_hit_tokens": result.usage.cache_hit_tokens,
+                                "cache_hit_rate": round(result.usage.cache_hit_rate, 4),
                             },
                             "rounds": result.rounds,
                             "tool_limit_reached": result.tool_limit_reached,
