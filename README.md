@@ -278,9 +278,10 @@ python -m agent config check    # 打印将要使用的配置；密钥缺失时�
 > 必须用 `python -m pytest`（而不是裸 `pytest`）：测试通过包名 `agent.*` 导入，
 > 需要仓库根目录在 `sys.path` 上，`python -m` 会把当前目录加进去。
 
-当前全量：**277 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
-本轮新增 `tests/test_backend_service.py` 的 10 个 API 级冒烟用例（工作区切换 / 知识库 / 自定义模型，
-全部 hermetic：配置与 SQLite 都在 `tmp_path`），使总数从 267 增至 277。
+当前全量：**278 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
+本轮新增 `tests/test_backend_service.py`：10 个 API 级冒烟用例（工作区切换 / 知识库 / 自定义模型）
++ 1 条 SQLite 并发回归（4 线程并发读写工作区设置，防止 `sqlite3.ProgrammingError` 复发），
+全部 hermetic：配置与 SQLite 都在 `tmp_path`；总数从 267 增至 278。
 
 ## 如何新增一个工具
 
@@ -1684,7 +1685,7 @@ SSE，**后端线程仍会跑完并落库**（第 35 条的既定语义），刷
 写 @libs 的要求: 模型自己拒绝（只读挂载），且 @libs 文件内容未被改动（PORT 仍 8080）
 ```
 
-`pytest` 仍 277 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
+`pytest` 仍 278 passed / 2 skipped：默认 `extras=()` 时旧路径分支完全不变。
 
 ### 60. 目录选择器：点着选，不用手打绝对路径
 

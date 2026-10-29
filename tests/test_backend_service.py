@@ -9,15 +9,17 @@
 
 **完全 hermetic**：配置与 SQLite 全部落在 ``tmp_path``，不读仓库 ``config.yaml``、
 不碰 ``data/sessions.db``、不联网（模型 base_url 是假的本地地址，测试里从不真正发起模型调用）。
-配置用 ``build_config`` 构造（同 ``tests/test_backend_tools.py``），但 ``AgentService``
-故意在**请求线程**里懒创建（原因见下面 ``api`` fixture 的注释），而不是在主线程预建。
+配置用 ``build_config`` 构造（同 ``tests/test_backend_tools.py``），service 在测试主线程里
+创建、由 TestClient 从请求线程调用 —— 这正好复现了 uvicorn 下「单例跨线程」的真实形态，
+也是 ``test_workspace_settings_concurrent_read_write`` 这条并发回归用例的背景。
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
-import sqlite3
+import threading
 import time
 from pathlib import Path
 
@@ -28,6 +30,7 @@ from agent.config import AppConfig, build_config
 from backend import REPO_ROOT
 from backend.main import app
 from backend.service.agent_service import AgentService
+from backend.service.workspace import WorkspaceSettings
 
 ENABLED = ["read_file", "write_file", "list_dir", "get_time"]
 
@@ -51,43 +54,23 @@ def _make_config(tmp_path: Path) -> AppConfig:
 
 
 @pytest.fixture()
-def api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def api(tmp_path: Path):
     """返回 ``(client, service, config)``；配置与库都在 tmp_path 里。
 
-    注意构造时机：``TestClient`` 的同步路由跑在 anyio 工作线程里，而
-    ``AgentService`` 内部有一个长期存活的 sqlite 连接（``WorkspaceSettings``，
-    默认 ``check_same_thread=True``）。如果像普通单测那样在主线程构造 service，
-    工作区切换接口会在 sqlite 层因「跨线程使用连接」而 500。这里用 context manager
-    固定一个 portal（实测所有请求落在同一工作线程），并把 ``AgentService.load``
-    替换成「用本用例的 tmp 配置构造」，让 service 在**请求线程**里懒创建 ——
-    既绕开 ``load_config()`` 读仓库配置，也复现了 uvicorn 下真实的服务创建路径。
+    service 在**测试主线程**创建（模拟 uvicorn 的单例），随后所有请求都由 TestClient
+    在请求线程里执行。这正是曾经触发 ``sqlite3.ProgrammingError`` 的形态：修复前
+    ``WorkspaceSettings`` 持有一条创建于主线程的长连接，工作区切换请求在别的线程里用它
+    就会 500；现在是每次操作短连接，跨线程安全（见 ``workspace.py`` 与并发回归用例）。
     """
     (tmp_path / "ws").mkdir()
     config = _make_config(tmp_path)
-    created: dict[str, AgentService] = {}
-
-    def fake_load(cls, config_path: str | None = None) -> AgentService:
-        service = AgentService(config)
-        created["service"] = service
-        return service
-
-    monkeypatch.setattr(AgentService, "load", classmethod(fake_load))
-    app.state.service = None
+    service = AgentService(config)
+    app.state.service = service
     try:
         with TestClient(app) as client:
-            client.get("/api/tools")  # 预热：在请求线程里把 service 建出来
-            yield client, created["service"], config
+            yield client, service, config
     finally:
         app.state.service = None
-        service = created.get("service")
-        if service is not None:
-            try:
-                service.workspace_settings.close()
-            except sqlite3.ProgrammingError:
-                # 连接是在请求线程里创建的；在测试主线程 close 会触发 sqlite 的
-                # 跨线程检查。不在这里强行绕过（那属于业务代码的线程模型问题），
-                # 留下连接交给 GC 回收即可 —— tmp 库随 tmp_path 生命周期结束。
-                pass
 
 
 @pytest.fixture()
@@ -200,6 +183,46 @@ def test_workspace_extras_named_mount_roundtrip(api, allowed_root: Path) -> None
     assert extras == [{"name": "libs", "path": str(libs.resolve()), "writable": False}]
     # 内存里的服务状态与响应一致（挂载已生效，读工具会按 @libs/ 前缀解析）
     assert [mount.name for mount in service.extras] == ["libs"]
+
+
+def test_workspace_settings_concurrent_read_write(tmp_path: Path) -> None:
+    """并发回归：多线程读写工作区设置，不能抛 ``sqlite3.ProgrammingError``。
+
+    背景：``WorkspaceSettings`` 曾经持有一条创建于主线程的长连接，而 Web 路由跑在
+    uvicorn/TestClient 的线程池里；请求线程一换就会抛
+    "SQLite objects created in a thread can only be used in that same thread"，
+    并发切工作区直接 500。现在改成每次操作短连接，这里用 4 个线程并发读写作回归。
+    """
+    settings = WorkspaceSettings(tmp_path / "concurrent.db")
+    errors: list[BaseException] = []
+    barrier = threading.Barrier(4)
+    writes_per_thread = 20
+
+    def worker(index: int) -> None:
+        try:
+            barrier.wait(timeout=10)  # 尽量让 4 个线程同时开跑
+            for _ in range(writes_per_thread):
+                settings.set(json.dumps({"root": f"D:\\ws{index}", "extras": []}))
+                assert settings.get() is not None
+        except BaseException as exc:  # noqa: BLE001 - 线程里的任何异常都要带回主线程断言
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=worker, args=(index,), name=f"ws-{index}") for index in range(4)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+        assert not thread.is_alive(), "工作区读写线程超时未结束"
+
+    assert errors == [], f"并发读写抛出了异常：{errors!r}"
+
+    # 并发结束后仍然能正确落库、读回（数据最终一致）
+    final_value = json.dumps({"root": "D:\\final", "extras": []})
+    settings.set(final_value)
+    assert settings.get() == final_value
+    settings.close()
 
 
 # ---------------------------------------------------------------- 知识库

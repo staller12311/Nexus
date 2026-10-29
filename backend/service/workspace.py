@@ -237,32 +237,63 @@ def _is_within(path: Path, parent: Path) -> bool:
 
 
 class WorkspaceSettings:
-    """把用户选的工作区落在同一个 SQLite 里（backend 自己管的表）。"""
+    """把用户选的工作区落在同一个 SQLite 里（backend 自己管的表）。
+
+    **每次操作短连接**，与 ``CustomModelStore`` 同一套做法。原因：``AgentService`` 是
+    进程级单例，但 Web 路由跑在线程池里（uvicorn/TestClient 都是），任何跨请求复用的
+    sqlite 连接都会在线程切换后抛 ``sqlite3.ProgrammingError``（默认
+    ``check_same_thread=True`` 只允许创建它的线程使用）。短连接没有跨线程状态，
+    也就不需要额外的锁；并发写的互斥交给 SQLite 自己的写锁 + ``timeout``。
+    """
 
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = Path(db_path)
-        self._conn = sqlite3.connect(str(self.db_path))
-        self._conn.row_factory = sqlite3.Row
-        self._conn.executescript(_SCHEMA)
-        self._conn.commit()
+        connection = self._connect()
+        try:
+            connection.executescript(_SCHEMA)
+            connection.commit()
+        finally:
+            connection.close()
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(str(self.db_path), timeout=10)
+        connection.row_factory = sqlite3.Row
+        try:
+            # 与 agent.storage / CustomModelStore 保持一致：WAL 下读写并发更友好
+            connection.execute("PRAGMA journal_mode = WAL")
+        except sqlite3.Error:  # pragma: no cover - 只读卷等极端情况
+            pass
+        return connection
 
     def close(self) -> None:
-        self._conn.close()
+        """兼容旧接口：短连接模式下没有常驻连接需要关闭（保留方法避免调用方报错）。"""
+        return None
 
     def get(self) -> str | None:
-        row = self._conn.execute(
-            "SELECT value FROM app_settings WHERE key = ?", (WORKSPACE_KEY,)
-        ).fetchone()
-        return str(row["value"]) if row and row["value"] else None
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (WORKSPACE_KEY,)
+            ).fetchone()
+            return str(row["value"]) if row and row["value"] else None
+        finally:
+            connection.close()
 
     def set(self, value: str | None) -> None:
-        with self._conn:
-            if value is None:
-                self._conn.execute("DELETE FROM app_settings WHERE key = ?", (WORKSPACE_KEY,))
-                return
-            self._conn.execute(
-                "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)"
-                " ON CONFLICT(key) DO UPDATE SET value = excluded.value,"
-                " updated_at = excluded.updated_at",
-                (WORKSPACE_KEY, value, utc_now()),
-            )
+        connection = self._connect()
+        try:
+            # with connection：正常结束提交、异常回滚
+            with connection:
+                if value is None:
+                    connection.execute(
+                        "DELETE FROM app_settings WHERE key = ?", (WORKSPACE_KEY,)
+                    )
+                    return
+                connection.execute(
+                    "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)"
+                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value,"
+                    " updated_at = excluded.updated_at",
+                    (WORKSPACE_KEY, value, utc_now()),
+                )
+        finally:
+            connection.close()
