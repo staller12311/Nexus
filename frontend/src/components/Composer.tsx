@@ -1,12 +1,15 @@
 import { Paperclip, SendHorizonal, ShieldCheck, Square } from 'lucide-react'
 import { WorkspaceDialog } from './WorkspaceDialog'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useChatStore } from '../store/chatStore'
 
 /** 沙箱说明文案（徽章 + Tooltip 共用，也是测试断言的目标） */
 const SANDBOX_HINT =
   '为保护您的数据安全，AI 文件读写工具已被严格限制在当前的 workspace 目录内，无法越权访问系统文件。'
+
+/** textarea 自适应高度的上限，与 class 里的 max-h-48（12rem/192px）保持一致 */
+const TEXTAREA_MAX_HEIGHT = 192
 
 export function Composer() {
   const draft = useChatStore((state) => state.draft)
@@ -28,7 +31,7 @@ export function Composer() {
     ? kbStatus.supported.join(',')
     : '.pdf,.docx,.txt,.md,.csv,.json,.log'
 
-  // 徽章上要显示当前工作区；首次挂载拉一次
+  // 盾牌 Tooltip 里要显示当前工作区；首次挂载拉一次
   useEffect(() => {
     void loadWorkspace()
   }, [loadWorkspace])
@@ -43,6 +46,14 @@ export function Composer() {
     element.setSelectionRange(end, end)
   }, [focusSignal])
 
+  // 输入框高度随内容自适应（上限由 CSS max-h-48 与 TEXTAREA_MAX_HEIGHT 双保险）
+  useLayoutEffect(() => {
+    const element = textareaRef.current
+    if (!element) return
+    element.style.height = 'auto'
+    element.style.height = `${Math.min(element.scrollHeight || 0, TEXTAREA_MAX_HEIGHT)}px`
+  }, [draft])
+
   const submit = () => {
     if (streaming || draft.trim().length === 0) return
     void sendMessage(draft)
@@ -55,99 +66,119 @@ export function Composer() {
     }
   }
 
+  const sandboxTitle = workspace
+    ? `安全沙箱保护中：${workspace}。${SANDBOX_HINT}点击切换工作区。`
+    : `${SANDBOX_HINT}点击切换工作区。`
+
   return (
     <div className="border-t border-slate-200 bg-white/80 backdrop-blur">
       <div className="mx-auto w-full max-w-3xl px-4 py-3">
-        <div className="flex items-end gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm focus-within:border-sky-400">
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            aria-label="上传文档到知识库"
-            title="上传文档到知识库（PDF / Word / 文本）"
-            className="mb-0.5 shrink-0 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-sky-600"
-          >
-            <Paperclip className="h-4 w-4" />
-          </button>
-
-          {/* 沙箱徽章：点击可切换工作区（校验在后端，见 README 第 58 条） */}
-          <button
-            type="button"
-            data-testid="sandbox-badge"
-            onClick={() => setWorkspaceOpen(true)}
-            title={`${SANDBOX_HINT}（点击切换工作区）`}
-            aria-label={`安全沙箱保护中。点击切换工作区。${SANDBOX_HINT}`}
-            className="group relative mb-0.5 hidden shrink-0 cursor-pointer items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100 sm:flex"
-          >
-            <ShieldCheck className="h-3 w-3" />
-            安全沙箱保护中
-            {/* 悬浮提示（原生 title 之外再给一个样式化的 Tooltip） */}
-            <span
-              role="tooltip"
-              className="pointer-events-none absolute bottom-full left-0 z-20 mb-2 w-64 rounded-lg bg-slate-800 px-2.5 py-1.5 text-[11px] font-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
-            >
-              {SANDBOX_HINT}
-              {workspace && (
-                <span className="mt-1 block font-mono text-[10px] text-slate-300">
-                  当前工作区：{workspace}
-                </span>
-              )}
-            </span>
-            {workspace && (
-              <span className="hidden max-w-[7rem] truncate font-mono text-[10px] opacity-70 lg:inline">
-                {workspace}
-              </span>
-            )}
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            multiple
-            accept={accept}
-            aria-label="选择要上传的文档"
-            className="hidden"
-            onChange={(event) => {
-              const files = Array.from(event.target.files ?? [])
-              if (files.length > 0) void uploadKbDocs(files)
-              event.target.value = ''
-            }}
-          />
+        {/* 输入区 + 工具栏 + 底部提示统一收进一张卡片里 */}
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow focus-within:border-sky-300 focus-within:shadow-md focus-within:ring-4 focus-within:ring-sky-50">
           <textarea
             ref={textareaRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}
             disabled={streaming}
-            rows={2}
+            rows={1}
             placeholder={streaming ? 'AI 正在回答……' : '输入问题，Enter 发送，Shift+Enter 换行'}
-            className="max-h-40 min-h-[44px] flex-1 resize-none bg-transparent px-2 py-1 text-sm text-slate-800 outline-none disabled:cursor-not-allowed disabled:text-slate-400"
+            className="block max-h-48 min-h-[52px] w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:text-slate-400"
           />
-          {streaming ? (
-            <button
-              type="button"
-              onClick={stopStreaming}
-              aria-label="停止生成"
-              title="停止生成（已生成的内容会保留）"
-              className="mb-0.5 flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700"
-            >
-              <Square className="h-3.5 w-3.5 fill-current" /> 停止
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={submit}
-              disabled={draft.trim().length === 0}
-              className="mb-0.5 flex items-center gap-1 rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              <SendHorizonal className="h-4 w-4" /> 发送
-            </button>
-          )}
-        </div>
-        <WorkspaceDialog open={workspaceOpen} onClose={() => setWorkspaceOpen(false)} />
 
-        <div className="mt-1 flex justify-between px-1 text-[11px] text-slate-400">
-          <span>{streaming ? 'AI 正在回答……' : 'Enter 发送 · Shift+Enter 换行'}</span>
-          <span>内容由模型生成，请自行核对</span>
+          <div className="flex items-center justify-between gap-2 px-2.5 pb-2">
+            {/* 左侧工具栏：小而并排的「回形针 + 盾牌」 */}
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                aria-label="上传文档到知识库"
+                title="上传文档到知识库（PDF / Word / 文本）"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-sky-600"
+              >
+                <Paperclip className="h-[17px] w-[17px]" />
+              </button>
+
+              {/* 沙箱/工作区状态：点击切换工作区，悬浮显示完整说明（校验在后端，见 README 第 58 条） */}
+              <button
+                type="button"
+                data-testid="sandbox-badge"
+                onClick={() => setWorkspaceOpen(true)}
+                title={sandboxTitle}
+                aria-label={`安全沙箱保护中${workspace ? `：${workspace}` : ''}。点击切换工作区。${SANDBOX_HINT}`}
+                className="group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-emerald-600 transition-colors hover:bg-emerald-50"
+              >
+                <ShieldCheck className="h-[17px] w-[17px]" />
+                <span className="sr-only">安全沙箱保护中</span>
+                {workspace && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-1 ring-white"
+                  />
+                )}
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute bottom-full left-0 z-20 mb-2 w-64 rounded-lg bg-slate-900/95 px-2.5 py-1.5 text-[11px] font-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+                >
+                  <span className="block font-medium">
+                    安全沙箱保护中{workspace ? `：${workspace}` : ''}
+                  </span>
+                  <span className="mt-0.5 block text-slate-300">{SANDBOX_HINT}</span>
+                </span>
+              </button>
+
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                accept={accept}
+                aria-label="选择要上传的文档"
+                className="hidden"
+                onChange={(event) => {
+                  const files = Array.from(event.target.files ?? [])
+                  if (files.length > 0) void uploadKbDocs(files)
+                  event.target.value = ''
+                }}
+              />
+            </div>
+
+            {/* 右下角控制区：圆形发送 / 停止按钮 */}
+            <div className="flex items-center gap-2">
+              {streaming ? (
+                <button
+                  type="button"
+                  onClick={stopStreaming}
+                  aria-label="停止生成"
+                  title="停止生成（已生成的内容会保留）"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-600 text-white shadow-sm transition-colors hover:bg-rose-700"
+                >
+                  <Square className="h-3.5 w-3.5 fill-current" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={submit}
+                  disabled={draft.trim().length === 0}
+                  aria-label="发送"
+                  title="发送（Enter）"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-600 text-white shadow-sm transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+                >
+                  <SendHorizonal className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 底部状态栏：极小、低对比度灰字，收在卡片内部 */}
+          <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-1.5 text-[10px] leading-4 text-slate-400">
+            <span className="truncate">
+              {streaming ? 'AI 正在回答……' : 'Enter 发送 · Shift+Enter 换行'}
+            </span>
+            <span className="shrink-0">内容由模型生成，请自行核对</span>
+          </div>
         </div>
+
+        <WorkspaceDialog open={workspaceOpen} onClose={() => setWorkspaceOpen(false)} />
       </div>
     </div>
   )
