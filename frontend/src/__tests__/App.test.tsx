@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 
@@ -36,6 +37,7 @@ describe('App 布局', () => {
     )
 
     const { container } = render(<App />)
+    const user = userEvent.setup()
 
     expect(screen.getByText(/Nexus/)).toBeInTheDocument()
     expect(screen.getByText('你的私有化 AI 调度中枢')).toBeInTheDocument()
@@ -43,7 +45,8 @@ describe('App 布局', () => {
     expect(screen.getByText(/Enter 发送/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /新建会话/ })).toBeInTheDocument()
 
-    // 模型加载后，下拉框里应出现 webmock
+    // 模型加载后：点击输入框右下角的模型选择器，菜单里应出现 webmock
+    await user.click(screen.getByLabelText('选择模型'))
     await waitFor(() => expect(screen.getByRole('option', { name: /webmock/ })).toBeInTheDocument())
 
     const text = container.textContent ?? ''

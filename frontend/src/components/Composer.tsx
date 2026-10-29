@@ -1,5 +1,7 @@
-import { Paperclip, SendHorizonal, ShieldCheck, Square } from 'lucide-react'
+import { Paperclip, Plus, SendHorizonal, ShieldCheck, Square } from 'lucide-react'
 import { WorkspaceDialog } from './WorkspaceDialog'
+import { ModelManagerDialog } from './ModelManagerDialog'
+import { ModelMenu } from './ModelMenu'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useChatStore } from '../store/chatStore'
@@ -37,7 +39,11 @@ export function Composer() {
   const stats = useChatStore((state) => state.stats)
   const contextUsage = useChatStore((state) => state.contextUsage)
   const lastTokensPerSecond = useChatStore((state) => state.lastTokensPerSecond)
+  const models = useChatStore((state) => state.models)
+  const model = useChatStore((state) => state.model)
+  const setModel = useChatStore((state) => state.setModel)
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
+  const [modelsOpen, setModelsOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
 
@@ -157,8 +163,24 @@ export function Composer() {
               />
             </div>
 
-            {/* 右下角控制区：圆形发送 / 停止按钮 */}
-            <div className="flex items-center gap-2">
+            {/* 右下角控制区：模型选择（迁移自侧边栏）+ 添加模型 + 圆形发送/停止 */}
+            <div className="flex items-center gap-1">
+              <ModelMenu
+                models={models}
+                value={model}
+                onChange={setModel}
+                onManage={() => setModelsOpen(true)}
+                disabled={streaming}
+              />
+              <button
+                type="button"
+                onClick={() => setModelsOpen(true)}
+                aria-label="模型管理"
+                title={streaming ? 'AI 正在回答，请稍后管理模型' : '添加 / 管理模型'}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
               {streaming ? (
                 <button
                   type="button"
@@ -211,6 +233,7 @@ export function Composer() {
         </div>
 
         <WorkspaceDialog open={workspaceOpen} onClose={() => setWorkspaceOpen(false)} />
+        <ModelManagerDialog open={modelsOpen} onClose={() => setModelsOpen(false)} />
       </div>
     </div>
   )

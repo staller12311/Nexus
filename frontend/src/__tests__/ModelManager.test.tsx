@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Sidebar } from '../components/Sidebar'
+import { Composer } from '../components/Composer'
 import { useChatStore } from '../store/chatStore'
 import type { ModelInfo } from '../types'
 
@@ -103,8 +103,8 @@ describe('模型管理面板', () => {
     useChatStore.getState().setModels([builtin('deepseek', true), custom('moonshot')])
     stubBackend([])
 
-    render(<Sidebar />)
-    await user.click(screen.getByLabelText('添加模型'))
+    render(<Composer />)
+    await user.click(screen.getByLabelText('模型管理'))
 
     expect(screen.getByText('内置模型（来自 config.yaml，只读）')).toBeInTheDocument()
     expect(screen.getByText('sk-****abcd')).toBeInTheDocument()
@@ -117,8 +117,8 @@ describe('模型管理面板', () => {
     useChatStore.getState().setModels([builtin('deepseek', true)])
     const calls = stubBackend([])
 
-    render(<Sidebar />)
-    await user.click(screen.getByLabelText('添加模型'))
+    render(<Composer />)
+    await user.click(screen.getByLabelText('模型管理'))
 
     await user.type(screen.getByLabelText('模型名称'), '有 空格')
     await user.type(screen.getByLabelText('Base URL'), 'ftp://x/v1')
@@ -135,8 +135,8 @@ describe('模型管理面板', () => {
     useChatStore.getState().setModels([builtin('deepseek', true)])
     const calls = stubBackend([builtin('deepseek', true)])
 
-    render(<Sidebar />)
-    await user.click(screen.getByLabelText('添加模型'))
+    render(<Composer />)
+    await user.click(screen.getByLabelText('模型管理'))
 
     await user.type(screen.getByLabelText('模型名称'), 'moonshot')
     await user.type(screen.getByLabelText('Base URL'), '  https://api.moonshot.cn/v1/  ')
@@ -164,8 +164,8 @@ describe('模型管理面板', () => {
     useChatStore.setState({ model: 'moonshot' })
     const calls = stubBackend([builtin('deepseek', true), custom('moonshot')])
 
-    render(<Sidebar />)
-    await user.click(screen.getByLabelText('添加模型'))
+    render(<Composer />)
+    await user.click(screen.getByLabelText('模型管理'))
     await user.click(screen.getByLabelText('删除模型 moonshot'))
 
     // 只点垃圾桶：还没发 DELETE
@@ -189,11 +189,15 @@ describe('模型管理面板', () => {
     stubBackend([])
     useChatStore.setState({ streaming: true })
 
-    render(<Sidebar />)
-    expect(screen.getByRole('combobox')).toBeDisabled()
-    expect(screen.getByText(/暂不能切换模型/)).toBeInTheDocument()
+    render(<Composer />)
+    // 模型选择器已迁移到输入框右下角：生成期间禁用，但「添加模型」仍可打开管理弹窗
+    expect(screen.getByLabelText('选择模型')).toBeDisabled()
+    expect(screen.getByLabelText('选择模型')).toHaveAttribute(
+      'title',
+      'AI 正在回答，稍后可切换模型',
+    )
 
-    await user.click(screen.getByLabelText('添加模型'))
+    await user.click(screen.getByLabelText('模型管理'))
     expect(screen.getByText(/AI 正在回答，暂不能修改模型/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /保存/ })).toBeDisabled()
     expect(screen.getByLabelText('删除模型 moonshot')).toBeDisabled()

@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Sidebar } from '../components/Sidebar'
+import { Composer } from '../components/Composer'
 import { useChatStore } from '../store/chatStore'
 import type { ModelInfo } from '../types'
 
@@ -53,8 +53,8 @@ function stubFetch(fetchResult: { models?: string[]; status?: number; detail?: s
 }
 
 async function openDialog(user: ReturnType<typeof userEvent.setup>) {
-  render(<Sidebar />)
-  await user.click(screen.getByLabelText('添加模型'))
+  render(<Composer />)
+  await user.click(screen.getByLabelText('模型管理'))
 }
 
 async function fillBase(user: ReturnType<typeof userEvent.setup>) {

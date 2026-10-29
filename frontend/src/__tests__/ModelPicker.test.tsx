@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Sidebar } from '../components/Sidebar'
+import { Composer } from '../components/Composer'
 import { useChatStore } from '../store/chatStore'
 import type { ModelInfo } from '../types'
 
@@ -61,8 +61,8 @@ function stubFetch() {
 }
 
 async function openWithFetched(user: ReturnType<typeof userEvent.setup>) {
-  render(<Sidebar />)
-  await user.click(screen.getByLabelText('添加模型'))
+  render(<Composer />)
+  await user.click(screen.getByLabelText('模型管理'))
   await user.type(screen.getByLabelText('模型名称'), 'qianwen')
   await user.type(screen.getByLabelText('Base URL'), 'https://dashscope.aliyuncs.com/compatible-mode/v1')
   await user.type(screen.getByLabelText('API Key'), 'sk-test')

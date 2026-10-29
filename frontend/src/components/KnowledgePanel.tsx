@@ -47,13 +47,13 @@ export function KnowledgePanel() {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="mb-1 flex w-full items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-700"
+        className="mb-1 flex w-full items-center gap-1 text-[11px] font-medium text-gray-500 hover:text-gray-700"
         aria-expanded={open}
         aria-label="知识库"
       >
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         知识库
-        <span className="ml-1 font-normal text-slate-400">
+        <span className="ml-1 font-normal text-gray-400">
           {status ? `${status.docs} 文档 · ${status.chunks} 片段` : ''}
         </span>
       </button>
@@ -74,8 +74,8 @@ export function KnowledgePanel() {
             onClick={() => inputRef.current?.click()}
             className={`cursor-pointer rounded-lg border border-dashed px-2 py-3 text-center text-[11px] transition-colors ${
               dragging
-                ? 'border-sky-400 bg-sky-50 text-sky-700'
-                : 'border-slate-300 bg-slate-50 text-slate-500 hover:border-sky-300'
+                ? 'border-gray-900 bg-gray-100 text-gray-800'
+                : 'border-gray-300 bg-white text-gray-500 hover:border-gray-400'
             }`}
           >
             <UploadCloud className="mx-auto mb-1 h-4 w-4" />
@@ -86,7 +86,7 @@ export function KnowledgePanel() {
             ) : (
               <span>拖入文件，或点击选择</span>
             )}
-            <div className="mt-0.5 text-[10px] text-slate-400">
+            <div className="mt-0.5 text-[10px] text-gray-400">
               {status?.supported?.join(' / ') ?? '.pdf / .docx / .txt'}
               {status ? ` · ≤${status.max_file_mb}MB` : ''}
             </div>
@@ -111,25 +111,25 @@ export function KnowledgePanel() {
               {docs.map((doc) => (
                 <li
                   key={doc.id}
-                  className="group flex items-start gap-1.5 rounded-md px-1 py-1 hover:bg-slate-50"
+                  className="group flex items-start gap-1.5 rounded-md px-1 py-1 hover:bg-gray-50"
                   data-testid={`kb-doc-${doc.id}`}
                 >
                   {doc.status === 'parsing' ? (
-                    <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-sky-500" />
+                    <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-gray-500" />
                   ) : (
                     <FileText
                       className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
-                        doc.status === 'failed' ? 'text-rose-500' : 'text-slate-400'
+                        doc.status === 'failed' ? 'text-rose-500' : 'text-gray-400'
                       }`}
                     />
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12px] text-slate-700" title={doc.name}>
+                    <div className="truncate text-[12px] text-gray-800" title={doc.name}>
                       {doc.name}
                     </div>
                     <div
                       className={`text-[10px] ${
-                        doc.status === 'failed' ? 'text-rose-500' : 'text-slate-400'
+                        doc.status === 'failed' ? 'text-rose-500' : 'text-gray-400'
                       }`}
                     >
                       {statusText(doc)} · {humanSize(doc.size)}
@@ -151,7 +151,7 @@ export function KnowledgePanel() {
                       type="button"
                       onClick={() => setConfirmId(doc.id)}
                       aria-label={`删除 ${doc.name}`}
-                      className="shrink-0 rounded p-0.5 text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-rose-600 group-hover:opacity-100"
+                      className="shrink-0 rounded p-0.5 text-gray-400 opacity-0 transition-opacity hover:bg-gray-100 hover:text-rose-600 group-hover:opacity-100"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -162,7 +162,7 @@ export function KnowledgePanel() {
           )}
 
           {status && (
-            <div className="mt-1 text-[10px] text-slate-400" data-testid="kb-pipeline">
+            <div className="mt-1 text-[10px] text-gray-400" data-testid="kb-pipeline">
               {status.pipeline}
             </div>
           )}
