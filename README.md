@@ -13,124 +13,136 @@
 
 </div>
 
+[核心特性](#核心特性) · [系统架构](#系统架构) · [界面预览](#界面预览) · [快速开始](#快速开始) · [配置](#配置)
+
 ## 为什么做这个？
 
-💡 当前市面上的 AI Agent（如 Coze、Dify）多为云端 SaaS，企业核心数据面临泄露风险；而基于 LangChain 的开源框架往往抽象过重，遇到复杂 Bug 难以调试。
+当前市面上的 AI Agent（如 Coze、Dify）多为云端 SaaS，企业核心数据面临泄露风险；而基于 LangChain 的开源框架往往抽象过重，遇到复杂 Bug 难以调试。
 
-**Nexus 智枢** 是一个**极致轻量、100% 本地私有化部署**的 Agent 中台。我们纯手写了底层 Agent Loop，让你能在完全脱离公网的物理隔离环境下，安全地让大模型帮你读写本地文件、执行 Python 脚本、检索私有知识库。
+**Nexus 智枢** 是一个**极致轻量、本地优先**的 Agent 中台。我们纯手写了底层 Agent Loop，让你在自己的电脑或服务器上安全地读写文件、执行 Python、检索私有知识库。接本地 Ollama / vLLM 时可完全离线运行；接云模型时仅推理请求出网。
 
 ## 它能帮你做什么？
 
-- 💻 **本地代码重构**：通过多根挂载（`@libs`），让 AI 安全地读取依赖库，并帮你重构整个项目。
-- 📄 **私有知识库问答**：上传 PDF/Word 财报，数据不出本地，AI 精准检索并给出结论（支持 1M 超长上下文）。
-- 🛡️ **安全执行沙箱**：让 AI 现场写 Python 代码并运行（如处理 Excel 数据），全程在 workspace 沙箱内执行，高危操作需人工点击确认。
+- **本地代码重构**：通过多根挂载（`@libs`），让 AI 安全地读取依赖库，并帮你重构整个项目。
+- **私有知识库问答**：上传 PDF/Word 财报，知识库与检索留在本地，AI 精准检索并给出结论（支持 1M 超长上下文）。
+- **安全执行沙箱**：让 AI 现场写 Python 代码并运行（如处理 Excel 数据），全程在 workspace 沙箱内执行，高危操作需人工点击确认。
 
 ## 竞品对比（为什么选我们？）
 
-🥊 直接看差异：
+直接看差异：
 
 | 维度 | 云端 SaaS (如 Coze/Dify) | 纯框架 (如 LangChain) | Nexus 智枢 |
 |---|---|---|---|
-| 数据隐私 | 数据需上云，有泄露风险 | 需自行搭建，缺乏安全沙箱 | ✅ 100% 本地运行，绝对私有 |
-| 执行能力 | 难以直接操作本地文件 | 需大量开发适配器 | ✅ 原生支持文件 CRUD、Python 执行 |
-| 安全控制 | 依赖平台规则 | 几乎没有防护 | ✅ 路径越界拦截、Human-in-the-loop 审批 |
-| 底层可控性 | 黑盒调包 | 抽象过重，难以 Debug | ✅ 纯手写 Agent Loop，无黑盒 |
+| 数据隐私 | 数据需上云，有泄露风险 | 需自行搭建，缺乏安全沙箱 | 本地部署；接本地模型可全离线 |
+| 执行能力 | 难以直接操作本地文件 | 需大量开发适配器 | 原生支持文件 CRUD、Python 执行 |
+| 安全控制 | 依赖平台规则 | 几乎没有防护 | 路径越界拦截、HITL 审批 |
+| 底层可控性 | 黑盒调包 | 抽象过重，难以 Debug | 纯手写 Agent Loop，无黑盒 |
 
 ## 系统架构
 
 ```mermaid
 graph TD
-    User((用户)) -->|发消息 / 上传文档| FE[React 19 前端]
-    FE -->|SSE 流式接收| API[FastAPI 网关]
-    
-    subgraph AgentCore [Agent Core 自研智能体核心]
-        API -->|推入任务| Loop[Agent Loop 编排器]
-        Loop -->|1. 请求并解析流| Provider[Provider 适配层]
-        Provider -->|2. 识别 Reasoning 与 Text| Loop
-        Loop -->|3. 流式拼接 Tool Calls| Tools[工具执行器]
-        Tools -->|4. 读取 workspace & @libs| FS[(本地文件系统)]
-        Tools -->|5. 执行 Python 沙箱| Code[run_python_code]
-        Tools -->|6. 结果回灌| Loop
+    User((用户)) -->|消息 / 文档| FE[React 19 前端]
+    FE -->|SSE 流式| API[FastAPI 网关]
+
+    subgraph AgentCore [Agent Core 自研内核]
+        API -->|任务| Loop[Agent Loop]
+        Loop -->|1 流式请求| Provider[Provider 适配层]
+        Provider -->|2 推理 / 正文| Loop
+        Loop -->|3 拼装 Tool Calls| Tools[工具执行器]
+        Tools -->|4 读写| FS[(workspace)]
+        Tools -->|5 执行 Python| Code[run_python_code]
+        Tools -->|6 结果回灌| Loop
     end
-    
-    subgraph ModelLayer [Model Layer 多模型底座]
-        Provider -.->|直连| DS[DeepSeek-V4 1M 上下文]
-        Provider -.->|热插拔| ThirdParty[千问 / Moonshot / 本地 Ollama]
+
+    subgraph ModelLayer [Model Layer]
+        Provider -.->|直连| DS[DeepSeek-V4 1M]
+        Provider -.->|热插拔| Other[千问 / 本地 Ollama]
     end
-    
-    Loop -->|7. 双流事件推送 + 审批请求| API
-    API -->|SSE 打字机 & 审批卡| FE
+
+    Loop -->|7 事件 + 审批| API
+    API -->|SSE 打字机 / 审批卡| FE
+
+    classDef fe fill:#e0f2fe,stroke:#0284c7,stroke-width:1px,color:#0f172a;
+    classDef gw fill:#f1f5f9,stroke:#64748b,stroke-width:1px,color:#0f172a;
+    classDef core fill:#ecfeff,stroke:#0891b2,stroke-width:1px,color:#0f172a;
+    classDef model fill:#f8fafc,stroke:#94a3b8,stroke-width:1px,color:#0f172a;
+    class FE fe;
+    class API gw;
+    class Loop,Provider,Tools,FS,Code core;
+    class DS,Other model;
 ```
 
-### 真流式与工具调用时序
+**工具调用**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant FE as 前端
+    participant BE as 后端
+    participant Agent as Agent
+    participant LLM as 大模型
+
+    U->>FE: 提交任务
+    FE->>BE: POST /api/chat/stream
+    BE->>Agent: run_stream()
+    Agent->>LLM: stream=true
+    LLM-->>Agent: reasoning 片段
+    Agent-->>BE: reasoning_delta
+    BE-->>FE: 思考中
+    LLM-->>Agent: tool_calls 片段
+    Note over Agent: 按 index 拼装参数
+    Agent->>Agent: 执行工具
+    Agent-->>BE: tool_call_end
+    BE-->>FE: 工具卡成功
+    LLM-->>Agent: 最终回答
+    Agent-->>BE: text_delta
+    BE-->>FE: 打字机输出
+    Agent-->>BE: message_end
+```
+
+**人工审批**
 
 ```mermaid
 sequenceDiagram
     participant U as 用户
-    participant FE as 前端(React)
-    participant BE as 后端(FastAPI)
-    participant Agent as 智能体核心
-    participant LLM as 大模型
+    participant FE as 前端
+    participant BE as 后端
+    participant Agent as Agent
 
-    U->>FE: "用 @libs 读一下依赖库，重构当前目录的 main.py"
-    FE->>BE: POST /api/chat/stream
-    BE->>Agent: run_stream()
-    Agent->>LLM: 发起 stream=True 请求
-    
-    LLM-->>Agent: 碎片 1: reasoning_content="我需要先读取共享库"
-    Agent-->>BE: SSE: reasoning_delta
-    BE-->>FE: 渲染灰色折叠面板(思考中...)
-    
-    LLM-->>Agent: 碎片 2: tool_calls=[read_file, args: {"pa"]
-    LLM-->>Agent: 碎片 3: tool_calls=[{"args: "th":"@libs/app.py"...}]
-    Note over Agent: 拼装完整 JSON 参数
-    Agent->>Agent: 执行 read_file (只读沙箱校验通过)
-    Agent-->>BE: SSE: tool_call_end
-    BE-->>FE: 工具卡片变绿 (成功读取)
-    
-    LLM-->>Agent: 碎片 4: content="我需要修改 main.py"
-    LLM-->>Agent: 碎片 5: tool_calls=[write_file, args: {...}]
-    Note over Agent: 检测到 write_file 需要审批
-    Agent-->>BE: SSE: approval_required
-    BE-->>FE: 渲染黄色审批卡片 (展示代码预览)
-    
-    U->>FE: 点击「同意执行」
+    Agent->>Agent: 识别 write_file
+    Agent-->>BE: approval_required
+    BE-->>FE: 黄色审批卡
+    U->>FE: 点击同意
     FE->>BE: POST /api/chat/approve
-    BE->>Agent: 唤醒 ApprovalGate (跨线程恢复)
-    Agent->>Agent: 执行 write_file 写入代码
-    Agent-->>BE: SSE: tool_call_end
-    BE-->>FE: 工具卡片变绿 (成功写入)
-    
-    LLM-->>Agent: 碎片 6: content="重构完成，已更新依赖"
-    Agent-->>BE: SSE: text_delta
-    BE-->>FE: 打字机输出正文
-    LLM-->>Agent: [DONE] 流结束
-    Agent-->>BE: SSE: message_end
+    BE->>Agent: 唤醒 ApprovalGate
+    Agent->>Agent: 执行 write_file
+    Agent-->>BE: tool_call_end
+    BE-->>FE: 工具卡变绿
 ```
 
 ## 核心特性
 
-- ✅ **自研 Agent Loop**：推理/正文双通道流式解析，`tool_calls` 碎片按 index 拼装，不依赖任何 Agent 框架
-- ✅ **多模型热插拔**：任意 OpenAI 兼容端点（DeepSeek / 千问 / Moonshot / 智谱 / Ollama / vLLM），一个 YAML 搞定
-- ✅ **真·流式 Web 体验**：SSE 打字机、思考链折叠、工具卡实时状态、React 19 + Zustand
-- ✅ **企业级安全沙箱**：workspace realpath 越界校验、`@mount` 只读挂载、命令/域名白名单、危险工具审批闸门
-- ✅ **长上下文记忆**：1M 窗口校准 + 大参数历史压缩 + 80% 自动摘要（不再粗暴砍历史）
-- ✅ **协议级健壮性**：非法 `function.arguments` 本地拦截、工具异常回灌、上游 400 防御
-- ✅ **可观测与成本**：Token/缓存命中率/节省估算、结构化日志与密钥脱敏、会话级统计
-- ✅ **一键启动 / 一键部署**：Windows `start.bat`；Docker Compose 一条命令跑通
+- **自研 Agent Loop**：推理/正文双通道流式解析，`tool_calls` 碎片按 index 拼装，不依赖任何 Agent 框架
+- **多模型热插拔**：任意 OpenAI 兼容端点（DeepSeek / 千问 / Moonshot / 智谱 / Ollama / vLLM），一个 YAML 搞定
+- **真·流式 Web 体验**：SSE 打字机、思考链折叠、工具卡实时状态、React 19 + Zustand
+- **企业级安全沙箱**：workspace realpath 越界校验、`@mount` 只读挂载、命令/域名白名单、危险工具审批闸门
+- **长上下文记忆**：1M 窗口校准 + 大参数历史压缩 + 80% 自动摘要（不再粗暴砍历史）
+- **协议级健壮性**：非法 `function.arguments` 本地拦截、工具异常回灌、上游 400 防御
+- **可观测与成本**：Token/缓存命中率/节省估算、结构化日志与密钥脱敏、会话级统计
+- **一键启动 / 一键部署**：Windows `start.bat`；Docker Compose 一条命令跑通
 
 ## 界面预览
 
-<table>
-  <tr>
-    <td width="50%"><img src="./assets/ui-chat.png" alt="Nexus 智枢 - 对话与工具调用界面" width="100%" /></td>
-    <td width="50%"><img src="./assets/ui-approval.png" alt="Nexus 智枢 - 审批卡片与代码沙箱" width="100%" /></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>对话 · 真流式 · 工具卡</sub></td>
-    <td align="center"><sub>审批卡片 · 代码预览 · 沙箱</sub></td>
-  </tr>
-</table>
+<p align="center"><a href="./assets/ui-chat.png"><img src="./assets/ui-chat.png" alt="Nexus 智枢 对话界面：流式回答、思考链与工具调用卡" width="100%" /></a></p>
+
+<details>
+<summary><b>审批卡片与代码沙箱（点击展开）</b></summary>
+
+<p align="center"><a href="./assets/ui-approval.png"><img src="./assets/ui-approval.png" alt="Nexus 智枢 审批卡片：write_file 只读代码预览、同意 / 拒绝" width="100%" /></a></p>
+
+</details>
 
 ## 项目结构
 
@@ -155,7 +167,8 @@ nexus-zhishu/
 ├── docker-compose.yml        # backend + web，挂载 data / workspace
 ├── config.example.yaml       # 配置模板（模型、沙箱、审批、上下文）
 ├── start.bat                 # Windows 一键启动（前后端 + 自动开浏览器）
-├── 输入.md                    # 技术白皮书（架构、突破、安全边界）
+├── docs/                     # 技术白皮书
+│   └── whitepaper.md         # 架构、核心突破、安全边界
 └── README.md
 ```
 
@@ -172,15 +185,15 @@ start.bat
 **方式 B：Docker 一键部署（推荐给服务器 / 给别人试用）**
 
 ```bash
-git clone <your-repo-url> nexus-zhishu && cd nexus-zhishu
+git clone https://github.com/staller12311/Nexus.git && cd Nexus
 cp .env.example .env          # 填入 DEEPSEEK_API_KEY（或其它模型密钥）
 docker compose up -d          # 首次构建约 3–5 分钟
 ```
 
-打开 **http://localhost:8080**。`data/`（SQLite 会话、日志）与 `workspace/`（Agent 文件沙箱）
+打开 <http://localhost:8080>。`data/`（SQLite 会话、日志）与 `workspace/`（Agent 文件沙箱）
 通过 volume 挂载到宿主机；Nginx 负责静态站点与 `/api` 反代，SSE 已关闭缓冲。
 
-> 🔒 安全提示：本项目默认面向**完全信任的本地开发环境**（`config.yaml` 中 `require_approval: false`）。
+> 安全提示：本项目默认面向**完全信任的本地开发环境**（`config.yaml` 中 `require_approval: false`）。
 > 如果 workspace 会处理他人代码或不可信输入，请把 `tools.require_approval` 改为 `true`，
 > 危险工具（`run_python_code` / `delete_path` / `run_shell`）将重新走人工审批。
 

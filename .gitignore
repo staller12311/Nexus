@@ -42,3 +42,6 @@ config.fake.yaml
 tools/data/
 tools/workspace/
 tools/__pycache__/
+
+# 本地协作工具的内部记忆文件（不公开）
+.workbuddy/
