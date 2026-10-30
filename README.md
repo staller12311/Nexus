@@ -255,9 +255,9 @@ models:
     base_url: https://openrouter.ai/api/v1
     model: openai/gpt-4o-mini
     api_key_env: OPENROUTER_API_KEY
-  qwen-vl-plus:                 # 视觉模型示例
+  qwen3-vl-plus:                 # 视觉模型示例
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-    model: qwen-vl-plus
+    model: qwen3-vl-plus
     api_key_env: DASHSCOPE_API_KEY
     supports_vision: true
 ```

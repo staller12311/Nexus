@@ -102,12 +102,12 @@ exit=1
 ## 视觉模型（Vision）
 
 `ModelConfig` 增加可选字段 `supports_vision`，默认 `false`（旧 YAML 不用改）。
-内置示例已包含 `qwen-vl-plus`；换用支持视觉的模型后，前端才会启用「上传图片」按钮。
+内置示例已包含 `qwen3-vl-plus`；换用支持视觉的模型后，前端才会启用「上传图片」按钮。
 
 ```yaml
-qwen-vl-plus:
+qwen3-vl-plus:
   base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-  model: qwen-vl-plus
+  model: qwen3-vl-plus
   api_key_env: DASHSCOPE_API_KEY
   supports_vision: true
 ```

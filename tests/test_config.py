@@ -44,11 +44,11 @@ def test_example_config_is_valid() -> None:
     config = load_config(EXAMPLE_CONFIG, load_env_file=False)
     assert isinstance(config, AppConfig)
     assert config.default_model == "deepseek"
-    assert set(config.models) == {"deepseek", "qwen-vl-plus", "ollama"}
+    assert set(config.models) == {"deepseek", "qwen3-vl-plus", "ollama"}
     assert config.models["deepseek"].context_window == 1000000  # 官方文档：1M
     assert config.models["ollama"].base_url == "http://localhost:11434/v1"
     # 视觉模型示例默认内置；纯文本模型默认 supports_vision=False
-    assert config.models["qwen-vl-plus"].supports_vision is True
+    assert config.models["qwen3-vl-plus"].supports_vision is True
     assert config.models["deepseek"].supports_vision is False
     assert config.tools.enabled == [
         "read_file",

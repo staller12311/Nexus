@@ -357,7 +357,7 @@ def chat_stream(request: Request, payload: ChatRequest) -> StreamingResponse:
         if not service.model_supports_vision(model_name):
             raise HTTPException(
                 status_code=422,
-                detail=f"当前模型 {model_name} 不支持图片，请切换到视觉模型（如 qwen-vl-plus）",
+                detail=f"当前模型 {model_name} 不支持图片，请切换到视觉模型（如 qwen3-vl-plus）",
             )
     message = (payload.message or "").strip()
     if not message and not attachments:

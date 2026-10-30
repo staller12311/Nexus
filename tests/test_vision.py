@@ -41,7 +41,7 @@ def _config(tmp_path: Path) -> AppConfig:
                 },
                 "vision": {
                     "base_url": "http://127.0.0.1:8128/v1",
-                    "model": "qwen-vl-plus",
+                    "model": "qwen3-vl-plus",
                     "api_key_env": "FAKE_VISION_KEY",
                     "supports_vision": True,
                 },

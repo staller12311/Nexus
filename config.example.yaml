@@ -15,9 +15,9 @@ models:
     max_tokens: 4096           # 思维链也算在 completion 里：写长代码建议调到 8192
     # DeepSeek 官方文档（api-docs.deepseek.com/zh-cn/quick_start/pricing）：上下文 1M
     context_window: 1000000
-  qwen-vl-plus:
+  qwen3-vl-plus:
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-    model: qwen-vl-plus
+    model: qwen3-vl-plus
     api_key_env: DASHSCOPE_API_KEY
     temperature: 0.3
     max_tokens: 4096

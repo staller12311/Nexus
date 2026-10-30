@@ -99,7 +99,7 @@ export function Composer() {
     if (streaming || uploadingImages) return
     if (draft.trim().length === 0 && pendingImages.length === 0) return
     if (pendingImages.length > 0 && !supportsVision) {
-      setImageError('当前模型不支持图片，请先切换到视觉模型（如 qwen-vl-plus）')
+      setImageError('当前模型不支持图片，请先切换到视觉模型（如 qwen3-vl-plus）')
       return
     }
     const attachments = pendingImages.map((item) => item.attachment)
@@ -112,7 +112,7 @@ export function Composer() {
   const onPickImages = async (files: File[]) => {
     if (files.length === 0) return
     if (!supportsVision) {
-      setImageError('当前模型不支持图片，请先切换到视觉模型（如 qwen-vl-plus）')
+      setImageError('当前模型不支持图片，请先切换到视觉模型（如 qwen3-vl-plus）')
       return
     }
     if (pendingImages.length + files.length > 4) {
@@ -224,7 +224,7 @@ export function Composer() {
                 data-testid="image-upload-button"
                 onClick={() => {
                   if (!supportsVision) {
-                    setImageError('当前模型不支持图片，请先切换到视觉模型（如 qwen-vl-plus）')
+                    setImageError('当前模型不支持图片，请先切换到视觉模型（如 qwen3-vl-plus）')
                     return
                   }
                   imageRef.current?.click()

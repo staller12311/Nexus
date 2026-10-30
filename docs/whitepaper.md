@@ -289,7 +289,7 @@ sequenceDiagram
   旧会话该列为 NULL，行为不变；
 - **协议侧**：backend 在请求期把 `text + attachments` 转成 OpenAI Vision content 数组；agent 只增加
   `run_stream(attachments=...)` 与 `request_transform` 两个 no-op 扩展点；
-- **能力侧**：`ModelConfig.supports_vision` 默认 false，内置 `qwen-vl-plus` 示例；纯文本模型在前端禁用上传、
+- **能力侧**：`ModelConfig.supports_vision` 默认 false，内置 `qwen3-vl-plus` 示例；纯文本模型在前端禁用上传、
   后端返回 422，双重拦截；
 - **成本侧**：历史最多重放最近 2 轮图片，更早的用 `[图片]` 占位，避免 base64 撑爆 1M 上下文。
 
