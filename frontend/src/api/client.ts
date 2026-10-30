@@ -1,5 +1,6 @@
 import type {
   ApiMessage,
+  Attachment,
   CustomModel,
   CustomModelPayload,
   KnowledgeDoc,
@@ -76,6 +77,9 @@ function uploadFile<T>(path: string, file: File, onProgress?: (percent: number) 
 
 export const api = {
   models: () => request<ModelInfo[]>('/models'),
+  /** 上传一张对话图片（先压缩再传；≤5MB） */
+  uploadImage: (file: File, onProgress?: (percent: number) => void) =>
+    uploadFile<Attachment>('/uploads', file, onProgress),
   /** token 用量统计：默认按当前会话（传 sessionId）；不传为全库 */
   stats: (sessionId?: string | null) =>
     request<UsageStats>(

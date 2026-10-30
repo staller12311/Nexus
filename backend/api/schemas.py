@@ -20,6 +20,7 @@ class ModelOut(BaseModel):
     api_key_masked: str = Field(
         default="", description="脱敏后的密钥，例如 sk-****abcd；内置模型为空"
     )
+    supports_vision: bool = Field(default=False, description="是否支持图片输入")
 
 
 class CustomModelIn(BaseModel):
@@ -160,9 +161,24 @@ class SessionsOut(BaseModel):
     sessions: list[SessionOut]
 
 
+class AttachmentIn(BaseModel):
+    id: str = Field(description="POST /api/uploads 返回的图片 id")
+    name: str | None = Field(default=None, description="原始文件名（仅用于展示）")
+
+
+class AttachmentOut(BaseModel):
+    id: str
+    url: str
+    mime: str
+    name: str
+    size: int
+
+
 class MessageOut(BaseModel):
     role: str
     content: str | None = None
+    #: 用户消息的图片附件元数据（旧消息没有这个字段）
+    attachments: list[AttachmentOut] | None = None
     tool_calls: list[dict[str, Any]] | None = None
     tool_call_id: str | None = None
     name: str | None = None
@@ -196,7 +212,10 @@ class DeletedOut(BaseModel):
 
 class ChatRequest(BaseModel):
     session_id: str
-    message: str
+    message: str = ""
+    attachments: list[AttachmentIn] = Field(
+        default_factory=list, description="先调用 POST /api/uploads 拿到的图片引用"
+    )
     model: str | None = Field(default=None, description="本轮临时切换模型，缺省用会话/默认模型")
 
 

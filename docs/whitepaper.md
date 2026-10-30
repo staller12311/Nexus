@@ -282,6 +282,17 @@ sequenceDiagram
   模型管理、Token 统计、错误边界；
 - `tsc --noEmit` 全绿；真实模型 + 假端点双路径验证。
 
+### 3.10 多模态图片理解（Vision，第一批）
+
+- **输入侧**：Composer 前端用 Canvas 把图片压到长边 ≤2048px、JPEG 0.8、≤1MB，再上传；
+- **存储侧**：文件落 `data/uploads/`，消息新增 nullable `attachments_json` 只存元数据，base64 永不落库，
+  旧会话该列为 NULL，行为不变；
+- **协议侧**：backend 在请求期把 `text + attachments` 转成 OpenAI Vision content 数组；agent 只增加
+  `run_stream(attachments=...)` 与 `request_transform` 两个 no-op 扩展点；
+- **能力侧**：`ModelConfig.supports_vision` 默认 false，内置 `qwen-vl-plus` 示例；纯文本模型在前端禁用上传、
+  后端返回 422，双重拦截；
+- **成本侧**：历史最多重放最近 2 轮图片，更早的用 `[图片]` 占位，避免 base64 撑爆 1M 上下文。
+
 ---
 
 ## 4. 安全边界

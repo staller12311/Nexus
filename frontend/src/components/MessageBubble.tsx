@@ -75,7 +75,10 @@ async function copyText(text: string): Promise<boolean> {
  * 悬停出现操作按钮：用户消息「复制 / 编辑」，AI 消息「复制」（只复制正文，不含思考）。
  */
 export function MessageBubbleInner({ message }: { message: ChatMessage }) {
-  const hasText = Boolean(message.content && message.content.trim().length > 0)
+  const hasImages = Boolean(message.attachments && message.attachments.length > 0)
+  const displayText =
+    hasImages && message.content?.trim() === '[图片]' ? '' : (message.content ?? '')
+  const hasText = Boolean(displayText.trim().length > 0)
   const hasTools = Boolean(message.toolCalls && message.toolCalls.length > 0)
   const hasReasoning = Boolean(message.reasoning)
   const [copied, setCopied] = useState(false)
@@ -106,7 +109,7 @@ export function MessageBubbleInner({ message }: { message: ChatMessage }) {
     timer.current = setTimeout(() => setCopied(false), 1500)
   }, [message.content])
 
-  if (!hasText && !hasTools && !hasReasoning) return null
+  if (!hasText && !hasTools && !hasReasoning && !hasImages) return null
 
   const isUser = message.role === 'user'
 
@@ -121,6 +124,29 @@ export function MessageBubbleInner({ message }: { message: ChatMessage }) {
           <ReasoningPanel reasoning={message.reasoning} streaming={message.reasoningStreaming} />
         )}
 
+        {isUser && hasImages && (
+          <div className="mb-1 flex flex-wrap justify-end gap-2">
+            {message.attachments?.map((attachment) => (
+              <a
+                key={attachment.id}
+                href={attachment.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={attachment.name}
+                className="block overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+              >
+                <img
+                  src={attachment.url}
+                  alt={attachment.name}
+                  data-testid="message-image"
+                  loading="lazy"
+                  className="max-h-56 max-w-[240px] object-cover"
+                />
+              </a>
+            ))}
+          </div>
+        )}
+
         {hasText && (
           <div
             className={`rounded-2xl px-4 py-2 text-sm shadow-sm ${
@@ -130,7 +156,7 @@ export function MessageBubbleInner({ message }: { message: ChatMessage }) {
             }`}
           >
             {isUser ? (
-              <span className="whitespace-pre-wrap break-words">{message.content}</span>
+              <span className="whitespace-pre-wrap break-words">{displayText}</span>
             ) : (
               <div className="markdown min-w-0 break-words">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>

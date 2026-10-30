@@ -14,6 +14,17 @@ export type ModelInfo = {
   has_key: boolean
   /** 脱敏后的密钥，如 sk-****abcd；内置模型为空 */
   api_key_masked: string
+  /** 是否支持图片输入 */
+  supports_vision?: boolean
+}
+
+/** 图片附件（POST /api/uploads 的返回值） */
+export type Attachment = {
+  id: string
+  url: string
+  mime: string
+  name: string
+  size: number
 }
 
 export type CustomModelPayload = {
@@ -103,6 +114,8 @@ export type ChatMessage = {
   reasoningStreaming?: boolean
   /** 用户点了「停止」：内容是已收到的部分，不是完整回答 */
   interrupted?: boolean
+  /** 用户消息附带的图片（旧消息没有该字段） */
+  attachments?: Attachment[]
 }
 
 /** GET /api/sessions/{id} 里的消息形态（OpenAI 形状 + 思维链） */
@@ -120,6 +133,8 @@ export type ApiMessage = {
   reasoning_content?: string | null
   /** 当轮 token 用量（旧消息没有这一项）；只用于展示，不会回传给模型 */
   usage?: Usage | null
+  /** 用户消息的图片附件（旧消息没有该字段） */
+  attachments?: Attachment[] | null
 }
 
 /** 知识库文档（GET /api/kb/docs） */

@@ -42,6 +42,17 @@
 运行时也可用 `POST /api/config/workspace` 的 `extras` 覆盖。模型用 `@name/路径` 访问挂载，
 普通相对路径只相对主工作区解析；只读挂载不能写入（第 59 条）。
 
+
+## 图片上传
+
+| 方法 | 路径 | 请求体 | 响应 |
+|---|---|---|---|
+| POST | `/api/uploads` | `multipart: file` | `201 {id,url,mime,name,size}`；仅 JPG/PNG/WebP，单张 ≤5MB |
+| GET | `/api/uploads/{id}` | — | 原图（Content-Type 按文件头） |
+
+`POST /api/chat/stream` 的 `ChatRequest` 增加 `attachments: [{id, name?}]`；带附件时 `message` 可为空，
+backend 会存 `[图片]` 作为文本占位并转换为 OpenAI Vision content 数组。模型 `supports_vision=false` 时返回 422。
+
 ## SSE 事件协议
 
 每帧都是 `data: <JSON>\n\n`：

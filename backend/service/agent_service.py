@@ -34,6 +34,8 @@ from .custom_models import (
     DuplicateCustomModel,
 )
 from .approvals import ApprovalRegistry
+from .uploads import UploadError, UploadStore
+from .vision import build_vision_transform
 from .knowledge import KnowledgeService, build_search_tool
 from .model_runtime import build_custom_provider
 from .web_search import WebSearchService, build_web_search_tool
@@ -93,6 +95,8 @@ class ModelInfo:
     has_key: bool = True
     #: 脱敏后的密钥（内置模型为空，因为后端从不读它的值）
     api_key_masked: str = ""
+    #: 是否支持图片输入（前端据此禁用上传按钮）
+    supports_vision: bool = False
 
 
 @dataclass(frozen=True)
@@ -143,6 +147,8 @@ class AgentService:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         self.custom_models = CustomModelStore(config.db_path)
+        # 图片附件：文件落 data/uploads，DB 只存元数据（不改 agent/storage 的正文语义）
+        self.uploads = UploadStore(config.db_path.parent / "uploads")
         # 本地知识库：解析/检索都在 backend 自己这层，agent/ 不知道它的存在；
         # 工具通过注册注入（KNOWN_TOOLS 不用改），未启用工具时注册了也不会被调用。
         self.knowledge = KnowledgeService(config.db_path)
@@ -259,6 +265,7 @@ class AgentService:
                 is_custom=False,
                 has_key=bool(os.environ.get(model.api_key_env, "").strip()),
                 api_key_masked="",  # 内置模型的密钥后端从不读取明文，也就给不出掩码
+                supports_vision=bool(model.supports_vision),
             )
             for name, model in self.config.models.items()
         ]
@@ -275,9 +282,25 @@ class AgentService:
                     is_custom=True,
                     has_key=bool(custom.api_key.strip()),
                     api_key_masked=custom.masked_key,
+                    supports_vision=False,
                 )
             )
         return infos
+
+    def resolve_model_name(self, session_id: str, override: str | None = None) -> str:
+        """解析本轮实际使用的模型（会话记录 / 显式覆盖 / 默认模型）。"""
+        with self._storage() as storage:
+            record = storage.find_session(session_id)
+        return override or record.model or self.config.default_model
+
+    def model_supports_vision(self, model_name: str) -> bool:
+        """内置模型读 config；自定义模型第一版一律按纯文本处理。"""
+        model = self.config.models.get(model_name)
+        return bool(model is not None and model.supports_vision)
+
+    def resolve_attachments(self, refs: list[dict]) -> list[dict]:
+        """校验并解析 ChatRequest 里的附件引用（不合法抛 UploadError）。"""
+        return self.uploads.resolve_many(refs)
 
     # ---- 自定义模型的增删 ----------------------------------------------
     def list_custom_models(self) -> list[CustomModel]:
@@ -467,7 +490,12 @@ class AgentService:
             # 详情接口要回放思维链与单条 usage；agent 的历史回放（chat/chat_stream）不带
             return (
                 self._to_session_info(record),
-                storage.get_messages(record.id, with_reasoning=True, with_usage=True),
+                storage.get_messages(
+                    record.id,
+                    with_reasoning=True,
+                    with_usage=True,
+                    with_attachments=True,
+                ),
             )
 
     def stats(self, session_id: str | None = None) -> dict[str, Any]:
@@ -608,6 +636,7 @@ class AgentService:
         session_id: str,
         message: str,
         *,
+        attachments: list[dict] | None = None,
         model: str | None = None,
         on_tool_call: Callable[[ToolCall], None] | None = None,
         on_tool_result: Callable[[ToolCall, str], None] | None = None,
@@ -619,7 +648,7 @@ class AgentService:
         客户端断开不会中断这里的执行（已采纳的语义：跑完、结果落库、只是丢事件流）。
         """
         text = (message or "").strip()
-        if not text:
+        if not text and not attachments:
             raise ValueError("消息不能为空")
 
         with self._storage() as storage:
@@ -627,7 +656,7 @@ class AgentService:
             model_name = model or record.model or self.config.default_model
             provider = self._provider_for(model_name)
 
-            history = storage.get_messages(record.id) or None
+            history = storage.get_messages(record.id, with_attachments=True) or None
             try:
                 loop = AgentLoop.from_config(
                     self._loop_config(),
@@ -641,8 +670,9 @@ class AgentService:
                     approval_handler=approval_handler,
                     context_window=self.context_window_for(model_name),
                     summarizer=self._make_summarizer(provider),
+                    request_transform=build_vision_transform(self.uploads),
                 )
-                result = loop.run(text)
+                result = loop.run(text or "[图片]", attachments=attachments)
             finally:
                 provider.close()
 
@@ -658,6 +688,7 @@ class AgentService:
         session_id: str,
         message: str,
         *,
+        attachments: list[dict] | None = None,
         model: str | None = None,
         on_tool_call: Callable[[ToolCall], None] | None = None,
         on_tool_result: Callable[[ToolCall, str], None] | None = None,
@@ -669,11 +700,12 @@ class AgentService:
         工具事件仍由 ``on_tool_call`` / ``on_tool_result`` 回调触发（与 chat() 一致）。
         """
         text = (message or "").strip()
-        if not text:
+        if not text and not attachments:
             raise ValueError("消息不能为空")
         yield from self._stream_turn(
             session_id,
-            text,
+            text or "[图片]",
+            attachments=attachments,
             model=model,
             on_tool_call=on_tool_call,
             on_tool_result=on_tool_result,
@@ -693,15 +725,28 @@ class AgentService:
 
         历史不会重复：删掉的那条 user 会被 loop 原样重新写入（README 第 53 条）。
         """
+        attachments: list[dict] = []
         with self._storage() as storage:
             record = storage.find_session(session_id)
+            last_user = next(
+                (
+                    message
+                    for message in reversed(
+                        storage.get_messages(record.id, with_attachments=True)
+                    )
+                    if message.get("role") == "user"
+                ),
+                None,
+            )
+            attachments = list((last_user or {}).get("attachments") or [])
             text = (storage.delete_from_last_user(record.id) or "").strip()
-        if not text:
+        if not text and not attachments:
             raise ValueError("这个会话里没有可重新生成的用户消息")
 
         yield from self._stream_turn(
             session_id,
-            text,
+            text or "[图片]",
+            attachments=attachments,
             model=model,
             on_tool_call=on_tool_call,
             on_tool_result=on_tool_result,
@@ -713,6 +758,7 @@ class AgentService:
         session_id: str,
         text: str,
         *,
+        attachments: list[dict] | None = None,
         model: str | None = None,
         on_tool_call: Callable[[ToolCall], None] | None = None,
         on_tool_result: Callable[[ToolCall, str], None] | None = None,
@@ -722,7 +768,7 @@ class AgentService:
             record = storage.find_session(session_id)
             model_name = model or record.model or self.config.default_model
             provider = self._provider_for(model_name)
-            history = storage.get_messages(record.id) or None
+            history = storage.get_messages(record.id, with_attachments=True) or None
             try:
                 loop = AgentLoop.from_config(
                     self._loop_config(),
@@ -736,8 +782,9 @@ class AgentService:
                     approval_handler=approval_handler,
                     context_window=self.context_window_for(model_name),
                     summarizer=self._make_summarizer(provider),
+                    request_transform=build_vision_transform(self.uploads),
                 )
-                for event in loop.run_stream(text):
+                for event in loop.run_stream(text, attachments=attachments):
                     kind = event.get("type")
                     if kind == "reasoning":
                         yield {"type": "reasoning_delta", "text": event.get("text") or ""}

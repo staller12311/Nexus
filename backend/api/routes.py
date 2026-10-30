@@ -12,7 +12,7 @@ from dataclasses import asdict
 from typing import Any, AsyncIterator
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from agent.config import ConfigError
 from agent.logging_setup import register_secret
@@ -27,11 +27,13 @@ from ..service.knowledge import (
 )
 from ..service.fs_browser import FsBrowseError, create_directory, list_directories
 from ..service.workspace import WorkspaceError
+from ..service.uploads import MAX_IMAGE_BYTES, UploadError
 from ..service.model_fetch import FetchModelsError, fetch_models
 from ..service.approvals import ApprovalAlreadyDecided, ApprovalNotFound
 from ..service.events import EventBridge, encode_event
 from .schemas import (
     ApproveIn,
+    AttachmentOut,
     ApproveOut,
     ClientErrorIn,
     ChatRequest,
@@ -90,6 +92,34 @@ def get_service(request: Request) -> AgentService:
 def list_models(request: Request) -> list[ModelOut]:
     service = get_service(request)
     return [ModelOut(**asdict(info)) for info in service.list_models()]
+
+
+@router.post(
+    "/uploads",
+    response_model=AttachmentOut,
+    status_code=201,
+    summary="上传一张对话图片（≤5MB，JPG/PNG/WebP）",
+)
+async def upload_image(request: Request, file: UploadFile = File(...)) -> AttachmentOut:
+    service = get_service(request)
+    data = await file.read()
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="单张图片不能超过 5MB")
+    try:
+        saved = service.uploads.save(data, file.filename, file.content_type)
+    except UploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return AttachmentOut(**saved)
+
+
+@router.get("/uploads/{upload_id}", summary="读取对话图片")
+def get_upload(request: Request, upload_id: str) -> FileResponse:
+    service = get_service(request)
+    try:
+        path, mime = service.uploads.path_for(upload_id)
+    except UploadError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(path, media_type=mime)
 
 
 @router.get("/tools", response_model=ToolsOut, summary="全部工具及启用状态")
@@ -312,17 +342,32 @@ def chat_stream(request: Request, payload: ChatRequest) -> StreamingResponse:
     service = get_service(request)
 
     # 能在开始推流之前做的校验，就用普通 HTTP 状态码返回（前端更好处理）
-    if not (payload.message or "").strip():
-        raise HTTPException(status_code=400, detail="消息不能为空")
     try:
         service.get_session(payload.session_id)
     except StorageError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    refs = [{"id": item.id, "name": item.name} for item in payload.attachments]
+    try:
+        attachments = service.resolve_attachments(refs)
+    except UploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if attachments:
+        model_name = service.resolve_model_name(payload.session_id, payload.model)
+        if not service.model_supports_vision(model_name):
+            raise HTTPException(
+                status_code=422,
+                detail=f"当前模型 {model_name} 不支持图片，请切换到视觉模型（如 qwen-vl-plus）",
+            )
+    message = (payload.message or "").strip()
+    if not message and not attachments:
+        raise HTTPException(status_code=400, detail="消息不能为空")
+
     generator = _stream_chat(
         service,
         session_id=payload.session_id,
-        message=payload.message.strip(),
+        message=message or "[图片]",
+        attachments=attachments,
         model=payload.model,
     )
     return StreamingResponse(
@@ -347,9 +392,26 @@ def regenerate_stream(request: Request, session_id: str, model: str | None = Que
     """删掉「最后一条 user 及其之后」的消息再重跑（README 第 53 条）。"""
     service = get_service(request)
     try:
-        service.get_session(session_id)
+        _info, messages = service.get_session(session_id)
     except StorageError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    # 重新生成带图旧消息时，同样要做模型能力校验（不能只靠前端按钮）
+    last_user_attachments = next(
+        (
+            message.get("attachments") or []
+            for message in reversed(messages)
+            if message.get("role") == "user"
+        ),
+        [],
+    )
+    if last_user_attachments:
+        model_name = service.resolve_model_name(session_id, model)
+        if not service.model_supports_vision(model_name):
+            raise HTTPException(
+                status_code=422,
+                detail=f"该会话包含图片，当前模型 {model_name} 不支持视觉",
+            )
 
     generator = _stream_chat(
         service,
@@ -375,6 +437,7 @@ async def _stream_chat(
     session_id: str,
     message: str | None,
     model: str | None,
+    attachments: list[dict] | None = None,
     regenerate: bool = False,
 ) -> AsyncIterator[str]:
     """把一次同步的流式问答转成 SSE 事件流。
@@ -460,6 +523,7 @@ async def _stream_chat(
                 else service.chat_stream(
                     session_id,
                     message or "",
+                    attachments=attachments,
                     model=model,
                     on_tool_call=on_tool_call,
                     on_tool_result=on_tool_result,

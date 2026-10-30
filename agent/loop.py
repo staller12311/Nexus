@@ -163,6 +163,7 @@ class AgentLoop:
         summarizer: Callable[[str], str | None] | None = None,
         context_summary_trigger: float = 0.8,
         context_summary_messages: int = 10,
+        request_transform: Callable[[list[dict[str, Any]]], list[dict[str, Any]]] | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         self.provider = provider
@@ -189,6 +190,8 @@ class AgentLoop:
         self._last_prompt_tokens = 0
         #: 本轮摘要是否失败/为空（失败时退回按条数裁剪，避免请求体失控）
         self._summary_failed = False
+        #: 可选：发给 provider 前对消息做一次纯函数转换（backend 的 Vision 适配器用）
+        self.request_transform = request_transform
         self._logger = logger or get_logger("agent.loop")
 
         self._messages: list[dict[str, Any]] = [dict(m) for m in (history or [])]
@@ -221,6 +224,7 @@ class AgentLoop:
         approval_handler: Callable[[ToolCall], bool] | None = None,
         context_window: int | None = None,
         summarizer: Callable[[str], str | None] | None = None,
+        request_transform: Callable[[list[dict[str, Any]]], list[dict[str, Any]]] | None = None,
     ) -> "AgentLoop":
         return cls(
             provider,
@@ -242,6 +246,7 @@ class AgentLoop:
             summarizer=summarizer,
             context_summary_trigger=config.agent.context_summary_trigger,
             context_summary_messages=config.agent.context_summary_messages,
+            request_transform=request_transform,
         )
 
     # ---- 只读视图 -------------------------------------------------------
@@ -263,18 +268,37 @@ class AgentLoop:
             and self.summarizer is not None
             and not self._summary_failed
         ):
+            return self._transform_messages(messages)
+        return self._transform_messages(trim_history(messages, self.max_history_messages))
+
+    def _transform_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """可选扩展点：backend 的 Vision 适配器在这里把附件换成 content 数组。
+
+        默认 no-op；CLI 与未配置视觉能力时行为完全不变。
+        """
+        if self.request_transform is None:
             return messages
-        return trim_history(messages, self.max_history_messages)
+        return self.request_transform(messages)
 
     # ---- 主循环 ---------------------------------------------------------
-    def run(self, user_input: str) -> LoopResult:
+    def run(
+        self,
+        user_input: str,
+        *,
+        attachments: Sequence[Mapping[str, Any]] | None = None,
+    ) -> LoopResult:
         """同步入口（CLI 用）：内部消费 ``run_stream()``，只返回最终结果。"""
-        for event in self.run_stream(user_input):
+        for event in self.run_stream(user_input, attachments=attachments):
             if event["type"] == "done":
                 return event["result"]
         raise RuntimeError("run_stream() 没有产出 done 事件")  # pragma: no cover
 
-    def run_stream(self, user_input: str) -> Iterator[dict[str, Any]]:
+    def run_stream(
+        self,
+        user_input: str,
+        *,
+        attachments: Sequence[Mapping[str, Any]] | None = None,
+    ) -> Iterator[dict[str, Any]]:
         """流式入口：逐条 yield 增量事件，最后 yield 一个 done 事件。
 
         事件：
@@ -284,10 +308,13 @@ class AgentLoop:
         - ``{"type": "done", "result": LoopResult, "reasoning": str | None}``
         """
         text = (user_input or "").strip()
-        if not text:
+        if not text and not attachments:
             raise ValueError("用户输入不能为空")
 
-        self._add_message({"role": "user", "content": text})
+        user_message: dict[str, Any] = {"role": "user", "content": text or "[图片]"}
+        if attachments:
+            user_message["attachments"] = [dict(item) for item in attachments]
+        self._add_message(user_message)
 
         run_usage = Usage()
         rounds = 0

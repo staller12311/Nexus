@@ -126,6 +126,7 @@ sequenceDiagram
 
 - **自研 Agent Loop**：推理/正文双通道流式解析，`tool_calls` 碎片按 index 拼装，不依赖任何 Agent 框架
 - **多模型热插拔**：任意 OpenAI 兼容端点（DeepSeek / 千问 / Moonshot / 智谱 / Ollama / vLLM），一个 YAML 搞定
+- **多模态 Vision**：上传图片自动压缩（长边 ≤2048px、JPEG 0.8、≤1MB），后端转 OpenAI Vision 数组；历史图片落盘 `data/uploads`，不把 base64 写进数据库
 - **真·流式 Web 体验**：SSE 打字机、思考链折叠、工具卡实时状态、React 19 + Zustand
 - **企业级安全沙箱**：workspace realpath 越界校验、`@mount` 只读挂载、命令/域名白名单、危险工具审批闸门
 - **长上下文记忆**：1M 窗口校准 + 大参数历史压缩 + 80% 自动摘要（不再粗暴砍历史）
@@ -148,35 +149,37 @@ sequenceDiagram
 
 ```text
 nexus-zhishu/
-├── agent/  # 自研 Agent 内核（零 Agent 框架依赖）
-│   ├── loop.py  # 主循环：流式解析、工具执行、上下文压缩/摘要
-│   ├── provider.py  # OpenAI 兼容 Provider、usage、重试与错误分类
-│   ├── registry.py  # 工具注册表与 JSON Schema
-│   ├── storage.py  # SQLite 会话 / 消息持久化
-│   ├── config.py  # pydantic 严格配置校验
-│   └── tools/  # 文件、shell、HTTP、时间、run_python_code
-├── backend/  # FastAPI + SSE 网关
-│   ├── api/  # 路由与请求/响应 Schema
-│   └── service/  # AgentService、审批闸门、知识库、工作区
-├── frontend/  # React 19 + Vite + Tailwind
-│   └── src/  # components / store / lib / api / 测试
-├── tests/  # pytest：主循环、工具安全、审批、Web API
-├── docker/  # Nginx 配置与后端容器入口
-├── assets/  # README 截图（ui-chat / ui-approval）
-├── Dockerfile  # 多阶段：Node 构建 → Python 运行时 → Nginx
-├── docker-compose.yml  # backend + web，挂载 data / workspace
-├── config.example.yaml  # 配置模板（模型、沙箱、审批、上下文）
-├── start.bat  # Windows 一键启动（前后端 + 自动开浏览器）
-├── docs/  # 深度文档
-│   ├── whitepaper.md  # 技术白皮书
-│   ├── design-decisions.md  # 68 条设计决策
-│   ├── api.md  # REST / SSE 协议
-│   ├── models.md  # 模型接入
-│   ├── cli.md  # 命令行用法
-│   ├── frontend.md  # 前端实现
-│   ├── tool-development.md  # 工具扩展
-│   └── development.md  # 测试 / 交付 / 历史
-├── LICENSE  # Apache-2.0 开源协议
+├── agent/                    # 自研 Agent 内核（零框架依赖）
+│   ├── loop.py               # 主循环：流式解析、工具执行、上下文摘要
+│   ├── provider.py           # OpenAI 兼容 Provider、usage、重试
+│   ├── registry.py           # 工具注册表与 JSON Schema
+│   ├── storage.py            # SQLite 会话 / 消息持久化
+│   ├── config.py             # pydantic 严格配置校验
+│   └── tools/                # 文件、shell、HTTP、Python 执行器
+├── backend/                  # FastAPI + SSE 网关
+│   ├── api/                  # 路由与请求 / 响应 Schema
+│   └── service/              # AgentService、审批、知识库、工作区
+│       ├── uploads.py        # 图片落盘 / 校验 / data URL
+│       └── vision.py         # OpenAI Vision content 转换
+├── frontend/                 # React 19 + Vite + Tailwind
+│   └── src/                  # components / store / lib / 图片压缩
+├── tests/                    # pytest：主循环、工具安全、审批、Vision
+├── docker/                   # Nginx 配置与后端容器入口
+├── assets/                   # README 截图（ui-chat / ui-approval）
+├── docs/                     # 深度文档
+│   ├── whitepaper.md         # 技术白皮书
+│   ├── design-decisions.md   # 68 条设计决策
+│   ├── api.md                # REST / SSE / 图片上传协议
+│   ├── models.md             # 模型接入（含视觉模型）
+│   ├── cli.md                # 命令行用法
+│   ├── frontend.md           # 前端实现
+│   ├── tool-development.md   # 工具扩展
+│   └── development.md        # 测试 / 交付 / 历史
+├── Dockerfile                # 多阶段：Node → Python → Nginx
+├── docker-compose.yml        # backend + web，挂载 data / workspace
+├── config.example.yaml       # 配置模板（模型、沙箱、审批、上下文）
+├── start.bat                 # Windows 一键启动
+├── LICENSE                   # Apache-2.0
 └── README.md
 ```
 
@@ -252,6 +255,11 @@ models:
     base_url: https://openrouter.ai/api/v1
     model: openai/gpt-4o-mini
     api_key_env: OPENROUTER_API_KEY
+  qwen-vl-plus:                 # 视觉模型示例
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    model: qwen-vl-plus
+    api_key_env: DASHSCOPE_API_KEY
+    supports_vision: true
 ```
 
 ### 新增模型
@@ -289,7 +297,7 @@ start.bat
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-当前 **328 passed / 2 skipped**；前端 **37 个测试文件 / 199 passed + 6 skipped**。
+当前 **339 passed / 2 skipped**；前端 **39 个测试文件 / 208 passed + 6 skipped**。
 
 完整测试范围、交付清单、已知待办与已清偿技术债见 [docs/development.md](docs/development.md)；新增工具（5 步 + 可运行模板）见 [docs/tool-development.md](docs/tool-development.md)。
 

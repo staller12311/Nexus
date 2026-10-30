@@ -50,6 +50,7 @@ export function reconstructMessages(messages: ApiMessage[], idPrefix = 'h'): Cha
         id: `${idPrefix}-${index}`,
         role: 'user',
         content: message.content ?? '',
+        ...(message.attachments?.length ? { attachments: message.attachments } : {}),
       })
       continue
     }

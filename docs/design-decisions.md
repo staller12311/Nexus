@@ -1382,3 +1382,10 @@ src/components/__init__.py
 
 **验证**：`tests/test_loop.py` 覆盖参数压缩、摘要替换与最近两轮保留、摘要失败回退；
 `tests/test_backend_service.py` 覆盖 qwen3.8-flash 自定义模型返回 1M 窗口。
+
+## 多模态补充（第一批）
+
+- 图片文件落 `data/uploads/`，消息表只新增 nullable `attachments_json`；不把 base64 写进 SQLite，旧会话零影响。
+- `AgentLoop` 只加 `run_stream(..., attachments=...)` 与 `request_transform` 两个可选扩展点；Vision 组装全部在 backend。
+- 视觉能力由 `ModelConfig.supports_vision` 声明，默认 false；前端禁用 + 后端 422 双重拦截，防止绕过 UI。
+- 历史图片最多重放 3 轮（当前 + 最近 2 轮），更早的用 `[图片]` 占位，控制 data URL 请求体大小。

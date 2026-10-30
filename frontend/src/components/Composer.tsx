@@ -1,4 +1,4 @@
-import { Brain, Database, Paperclip, Plus, SendHorizonal, ShieldCheck, Square, Zap } from 'lucide-react'
+import { Brain, Database, ImagePlus, Paperclip, Plus, SendHorizonal, ShieldCheck, Square, X, Zap } from 'lucide-react'
 import { WorkspaceDialog } from './WorkspaceDialog'
 import { ModelManagerDialog } from './ModelManagerDialog'
 import { ModelMenu } from './ModelMenu'
@@ -6,6 +6,9 @@ import { formatMoney, formatRate, INPUT_PRICE_PER_1K_TOKENS, savedAmount } from 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useChatStore } from '../store/chatStore'
+import { api } from '../api/client'
+import { compressImageFile } from '../lib/imageCompress'
+import type { Attachment } from '../types'
 
 /** 沙箱说明文案（徽章 + Tooltip 共用，也是测试断言的目标） */
 const SANDBOX_HINT =
@@ -42,6 +45,16 @@ export function Composer() {
   const [modelsOpen, setModelsOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const imageRef = useRef<HTMLInputElement | null>(null)
+  const [pendingImages, setPendingImages] = useState<
+    Array<{ attachment: Attachment; previewUrl: string; name: string }>
+  >([])
+  const [imageError, setImageError] = useState<string | null>(null)
+  const [uploadingImages, setUploadingImages] = useState(false)
+  const pendingImagesRef = useRef(pendingImages)
+
+  const selectedModel = models.find((item) => item.name === model) ?? models.find((item) => item.is_default)
+  const supportsVision = selectedModel?.supports_vision === true
 
   // 支持格式由后端 /api/kb/status 给出（缺 pypdf/python-docx 时就没有 .pdf/.docx）
   const accept = kbStatus?.supported?.length
@@ -52,6 +65,17 @@ export function Composer() {
   useEffect(() => {
     void loadWorkspace()
   }, [loadWorkspace])
+
+  useEffect(() => {
+    pendingImagesRef.current = pendingImages
+  }, [pendingImages])
+
+  // 卸载时释放图片预览的 object URL
+  useEffect(() => {
+    return () => {
+      pendingImagesRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+    }
+  }, [])
 
   // 点了消息上的「编辑」：把焦点移回输入框，光标放到末尾
   useEffect(() => {
@@ -71,15 +95,63 @@ export function Composer() {
     element.style.height = `${Math.min(element.scrollHeight || 0, TEXTAREA_MAX_HEIGHT)}px`
   }, [draft])
 
-  const submit = () => {
-    if (streaming || draft.trim().length === 0) return
-    void sendMessage(draft)
+  const submit = async () => {
+    if (streaming || uploadingImages) return
+    if (draft.trim().length === 0 && pendingImages.length === 0) return
+    if (pendingImages.length > 0 && !supportsVision) {
+      setImageError('当前模型不支持图片，请先切换到视觉模型（如 qwen-vl-plus）')
+      return
+    }
+    const attachments = pendingImages.map((item) => item.attachment)
+    pendingImages.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+    setPendingImages([])
+    setImageError(null)
+    await sendMessage(draft, attachments)
+  }
+
+  const onPickImages = async (files: File[]) => {
+    if (files.length === 0) return
+    if (!supportsVision) {
+      setImageError('当前模型不支持图片，请先切换到视觉模型（如 qwen-vl-plus）')
+      return
+    }
+    if (pendingImages.length + files.length > 4) {
+      setImageError('每条消息最多 4 张图片')
+      return
+    }
+    setImageError(null)
+    setUploadingImages(true)
+    const added: Array<{ attachment: Attachment; previewUrl: string; name: string }> = []
+    try {
+      for (const file of files) {
+        try {
+          const compressed = await compressImageFile(file)
+          const attachment = await api.uploadImage(compressed)
+          added.push({
+            attachment,
+            previewUrl: URL.createObjectURL(compressed),
+            name: compressed.name,
+          })
+        } catch (error) {
+          setImageError(error instanceof Error ? error.message : '图片上传失败')
+        }
+      }
+      if (added.length > 0) setPendingImages((current) => [...current, ...added].slice(0, 4))
+    } finally {
+      setUploadingImages(false)
+    }
+  }
+
+  const removeImage = (previewUrl: string) => {
+    URL.revokeObjectURL(previewUrl)
+    setPendingImages((current) => current.filter((item) => item.previewUrl !== previewUrl))
+    setImageError(null)
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      submit()
+      void submit()
     }
   }
 
@@ -96,6 +168,35 @@ export function Composer() {
       <div className="mx-auto w-full max-w-3xl px-4 py-3">
         {/* 输入区 + 工具栏 + 底部提示统一收进一张卡片里；卡片之外只有页面背景 */}
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors focus-within:border-sky-400">
+          {pendingImages.length > 0 && (
+            <div className="flex flex-wrap gap-2 px-3 pt-2">
+              {pendingImages.map((item) => (
+                <div key={item.previewUrl} className="relative">
+                  <img
+                    src={item.previewUrl}
+                    alt={item.name}
+                    className="h-16 w-16 rounded-lg border border-slate-200 object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(item.previewUrl)}
+                    aria-label="移除图片"
+                    title="移除图片"
+                    className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-800 text-white shadow-sm hover:bg-rose-600"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {imageError && (
+            <p className="px-4 pt-1 text-xs text-rose-600" role="alert">
+              {imageError}
+            </p>
+          )}
+
           <textarea
             id="composer-input"
             name="message"
@@ -105,13 +206,41 @@ export function Composer() {
             onKeyDown={onKeyDown}
             disabled={streaming}
             rows={1}
-            placeholder={streaming ? 'AI 正在回答……' : '输入问题，Enter 发送，Shift+Enter 换行'}
+            placeholder={
+              streaming
+                ? 'AI 正在回答……'
+                : uploadingImages
+                  ? '图片压缩 / 上传中……'
+                  : '输入问题，Enter 发送，Shift+Enter 换行'
+            }
             className="block max-h-48 min-h-[40px] w-full resize-none bg-transparent px-4 pb-0.5 pt-2 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:text-slate-400"
           />
 
           <div className="flex items-center justify-between gap-2 px-2 pb-1">
             {/* 左侧工具栏：小而并排的「回形针 + 盾牌」 */}
             <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                data-testid="image-upload-button"
+                onClick={() => {
+                  if (!supportsVision) {
+                    setImageError('当前模型不支持图片，请先切换到视觉模型（如 qwen-vl-plus）')
+                    return
+                  }
+                  imageRef.current?.click()
+                }}
+                disabled={streaming || uploadingImages}
+                aria-label="上传图片"
+                title={
+                  supportsVision
+                    ? '上传图片（自动压缩，最多 4 张）'
+                    : '当前模型不支持图片，请切换到视觉模型'
+                }
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-sky-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ImagePlus className="h-4 w-4" />
+              </button>
+
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
@@ -149,6 +278,21 @@ export function Composer() {
                   <span className="mt-0.5 block text-slate-300">{SANDBOX_HINT}</span>
                 </span>
               </button>
+
+              <input
+                id="composer-image-input"
+                name="images"
+                ref={imageRef}
+                type="file"
+                multiple
+                accept="image/jpeg,image/png,image/webp"
+                aria-label="选择要发送的图片"
+                className="hidden"
+                onChange={(event) => {
+                  void onPickImages(Array.from(event.target.files ?? []))
+                  event.target.value = ''
+                }}
+              />
 
               <input
                 id="composer-file-input"
@@ -199,7 +343,7 @@ export function Composer() {
                 <button
                   type="button"
                   onClick={submit}
-                  disabled={draft.trim().length === 0}
+                  disabled={(draft.trim().length === 0 && pendingImages.length === 0) || uploadingImages}
                   aria-label="发送"
                   title="发送（Enter）"
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-600 text-white shadow-sm transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"

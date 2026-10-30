@@ -98,3 +98,19 @@ api_key_env           DEEPSEEK_API_KEY: 未设置
 [stderr] 配置检查失败：环境变量 DEEPSEEK_API_KEY 未设置或为空（模型 deepseek 需要它）。
 exit=1
 ```
+
+## 视觉模型（Vision）
+
+`ModelConfig` 增加可选字段 `supports_vision`，默认 `false`（旧 YAML 不用改）。
+内置示例已包含 `qwen-vl-plus`；换用支持视觉的模型后，前端才会启用「上传图片」按钮。
+
+```yaml
+qwen-vl-plus:
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen-vl-plus
+  api_key_env: DASHSCOPE_API_KEY
+  supports_vision: true
+```
+
+图片文件保存到 `data/uploads/`，消息只存 `attachments` 元数据；请求时 backend 才临时生成
+`data:image/...;base64,...` 的 OpenAI Vision content 数组，不把 base64 写库。

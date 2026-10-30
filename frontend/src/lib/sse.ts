@@ -68,6 +68,7 @@ export async function* parseSSEStream(
 export type StreamChatOptions = {
   sessionId: string
   message: string
+  attachments?: Array<{ id: string; name?: string }>
   model?: string | null
   /** 默认空字符串：走 Vite proxy；测试里可传 http://127.0.0.1:8000 */
   baseUrl?: string
@@ -117,10 +118,17 @@ async function postStream(
 
 /** 发起一次流式对话，逐个把事件交给 onEvent。HTTP 非 2xx 直接抛错。 */
 export async function streamChat(options: StreamChatOptions): Promise<void> {
-  const { sessionId, message, model, baseUrl, onEvent, signal } = options
+  const { sessionId, message, attachments, model, baseUrl, onEvent, signal } = options
   await postStream(
     '/api/chat/stream',
-    { session_id: sessionId, message, ...(model ? { model } : {}) },
+    {
+      session_id: sessionId,
+      message,
+      ...(attachments?.length
+        ? { attachments: attachments.map((item) => ({ id: item.id, name: item.name })) }
+        : {}),
+      ...(model ? { model } : {}),
+    },
     onEvent,
     { baseUrl, signal },
   )

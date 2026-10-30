@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { parseSSEStream, type ServerEvent } from '../lib/sse'
+import { describe, expect, it, vi } from 'vitest'
+import { parseSSEStream, streamChat, type ServerEvent } from '../lib/sse'
 
 function streamOf(chunks: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
@@ -81,3 +81,27 @@ describe('parseSSEStream', () => {
     expect(events.map((event) => event.type)).toEqual(['message_end'])
   })
 })
+
+  it('streamChat 把 attachments 放进 POST 请求体', async () => {
+    let body: Record<string, unknown> = {}
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
+        return new Response(streamOf(['data: {"type":"message_end"}\n\n']), {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' },
+        })
+      }),
+    )
+    const events: ServerEvent[] = []
+    await streamChat({
+      sessionId: 's1',
+      message: '看图',
+      attachments: [{ id: 'a'.repeat(32) + '.png' }],
+      onEvent: (event) => events.push(event),
+    })
+    expect(body.attachments).toEqual([{ id: 'a'.repeat(32) + '.png' }])
+    expect(events[0].type).toBe('message_end')
+    vi.unstubAllGlobals()
+  })

@@ -5,6 +5,7 @@ import { reconstructMessages } from '../lib/reconstruct'
 import { reportClientError } from '../lib/clientError'
 import { streamChat, streamRegenerate, type ServerEvent } from '../lib/sse'
 import type {
+  Attachment,
   ChatMessage,
   CustomModelPayload,
   KnowledgeDoc,
@@ -190,7 +191,7 @@ type ChatState = {
   /** 自动起标题：fire-and-forget，失败静默（保持列表里的截断标题） */
   generateTitle: (sessionId: string) => Promise<void>
 
-  sendMessage: (text: string) => Promise<void>
+  sendMessage: (text: string, attachments?: Attachment[]) => Promise<void>
   /** 点「停止」：中断 SSE，保留已生成内容并标记为已中断 */
   stopStreaming: () => void
   /** 把当前 assistant 消息标记为「已中断」（流被 abort 时调用） */
@@ -681,9 +682,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return { messages }
     }),
 
-  sendMessage: async (text) => {
+  sendMessage: async (text, attachments) => {
     const trimmed = text.trim()
-    if (!trimmed || get().streaming) return
+    if ((!trimmed && !attachments?.length) || get().streaming) return
 
     const { model } = get()
     // 记录本轮之前是否空会话：只有第一次对话结束才尝试自动起标题
@@ -694,7 +695,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streaming: true,
       messages: [
         ...state.messages,
-        { id: nextId(), role: 'user', content: trimmed },
+        {
+          id: nextId(),
+          role: 'user',
+          content: trimmed || '[图片]',
+          ...(attachments?.length ? { attachments } : {}),
+        },
         { id: nextId(), role: 'assistant', content: '', streaming: true },
       ],
     }))
@@ -711,7 +717,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
       await streamChat({
         sessionId,
-        message: trimmed,
+        message: trimmed || '[图片]',
+        attachments,
         model,
         baseUrl: apiBase(),
         onEvent: (event) => applyEvent(get, event),

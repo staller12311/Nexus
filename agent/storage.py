@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS messages (
     name         TEXT,
     reasoning_content TEXT,
     usage_json   TEXT,
+    attachments_json TEXT,
     created_at   TEXT NOT NULL,
     UNIQUE (session_id, seq)
 );
@@ -118,6 +119,13 @@ def normalize_message(message: Mapping[str, Any]) -> dict[str, Any]:
         raise StorageError("role=tool 的消息必须带 tool_call_id")
     if role == "assistant" and not normalized.get("content") and not normalized.get("tool_calls"):
         raise StorageError("assistant 消息必须至少有 content 或 tool_calls")
+
+    #: 图片附件只存元数据（文件名/URL/MIME），不存 base64；旧消息没有这个字段
+    if "attachments" in message and message.get("attachments"):
+        attachments = _jsonable(message["attachments"])
+        if not isinstance(attachments, list):
+            raise StorageError("attachments 必须是数组")
+        normalized["attachments"] = attachments
     return normalized
 
 
@@ -160,6 +168,8 @@ class Storage:
             self._conn.execute("ALTER TABLE messages ADD COLUMN reasoning_content TEXT")
         if "usage_json" not in message_columns:
             self._conn.execute("ALTER TABLE messages ADD COLUMN usage_json TEXT")
+        if "attachments_json" not in message_columns:
+            self._conn.execute("ALTER TABLE messages ADD COLUMN attachments_json TEXT")
 
     def _next_seq(self) -> int:
         """下一个逻辑序号（会话顺序的唯一依据）。调用方需处于事务中。"""
@@ -357,8 +367,8 @@ class Storage:
             now = utc_now()
             self._conn.execute(
                 "INSERT INTO messages (session_id, seq, role, content, tool_calls,"
-                " tool_call_id, name, reasoning_content, usage_json, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " tool_call_id, name, reasoning_content, usage_json, attachments_json, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     session_id,
                     seq,
@@ -371,6 +381,9 @@ class Storage:
                     normalized.get("name"),
                     reasoning_text,
                     usage_text,
+                    json.dumps(normalized["attachments"], ensure_ascii=False)
+                    if normalized.get("attachments")
+                    else None,
                     now,
                 ),
             )
@@ -392,6 +405,7 @@ class Storage:
         *,
         with_reasoning: bool = False,
         with_usage: bool = False,
+        with_attachments: bool = False,
     ) -> list[dict[str, Any]]:
         """按时间升序返回消息；limit 表示只取**最近** limit 条。
 
@@ -412,7 +426,10 @@ class Storage:
                 " ORDER BY seq DESC LIMIT ?) ORDER BY seq ASC",
                 (session_id, limit),
             ).fetchall()
-        return [self._row_to_message(row, with_reasoning, with_usage) for row in rows]
+        return [
+            self._row_to_message(row, with_reasoning, with_usage, with_attachments)
+            for row in rows
+        ]
 
     def count_messages(self, session_id: str) -> int:
         self.require_session(session_id)
@@ -483,7 +500,10 @@ class Storage:
 
     @staticmethod
     def _row_to_message(
-        row: sqlite3.Row, with_reasoning: bool = False, with_usage: bool = False
+        row: sqlite3.Row,
+        with_reasoning: bool = False,
+        with_usage: bool = False,
+        with_attachments: bool = False,
     ) -> dict[str, Any]:
         message: dict[str, Any] = {"role": row["role"]}
         if row["content"] is not None:
@@ -499,6 +519,11 @@ class Storage:
         if with_usage and row["usage_json"]:
             try:
                 message["usage"] = json.loads(row["usage_json"])
+            except (TypeError, ValueError):  # pragma: no cover - 旧库脏数据
+                pass
+        if with_attachments and row["attachments_json"]:
+            try:
+                message["attachments"] = json.loads(row["attachments_json"])
             except (TypeError, ValueError):  # pragma: no cover - 旧库脏数据
                 pass
         return message

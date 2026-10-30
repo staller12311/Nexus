@@ -78,6 +78,8 @@ class ModelConfig(_StrictModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=4096, gt=0)
     context_window: int = Field(default=32768, gt=0)
+    #: 是否支持图片输入（OpenAI Vision content 数组）
+    supports_vision: bool = False
 
     @field_validator("base_url", "model", "api_key_env")
     @classmethod
