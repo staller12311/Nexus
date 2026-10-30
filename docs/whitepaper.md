@@ -1,5 +1,7 @@
 # Nexus 智枢 技术白皮书
 
+> 返回 [README](../README.md)
+
 > **具备企业级安全沙箱的私有化 AI Agent 中台**
 > 文档版本：v1.0（封板） · 适用代码：`main`
 > 关键词：自研 Agent Loop · 真流式 SSE · 工具沙箱 · Human-in-the-loop · 1M 上下文记忆
