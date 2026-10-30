@@ -6,9 +6,9 @@
 
 <p><b>支持 1M 上下文、本地知识库与代码沙箱的私有化 Agent 中台</b></p>
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-3b82f6?style=flat-square&logo=apache&logoColor=white)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 
 </div>
@@ -148,34 +148,35 @@ sequenceDiagram
 
 ```text
 nexus-zhishu/
-├── agent/                    # 自研 Agent 内核（零 Agent 框架依赖）
-│   ├── loop.py               # 主循环：流式解析、工具执行、上下文压缩/摘要
-│   ├── provider.py           # OpenAI 兼容 Provider、usage、重试与错误分类
-│   ├── registry.py           # 工具注册表与 JSON Schema
-│   ├── storage.py            # SQLite 会话 / 消息持久化
-│   ├── config.py             # pydantic 严格配置校验
-│   └── tools/                # 文件、shell、HTTP、时间、run_python_code
-├── backend/                  # FastAPI + SSE 网关
-│   ├── api/                  # 路由与请求/响应 Schema
-│   └── service/              # AgentService、审批闸门、知识库、工作区
-├── frontend/                 # React 19 + Vite + Tailwind
-│   └── src/                  # components / store / lib / api / 测试
-├── tests/                    # pytest：主循环、工具安全、审批、Web API
-├── docker/                   # Nginx 配置与后端容器入口
-├── assets/                   # README 截图（ui-chat / ui-approval）
-├── Dockerfile                # 多阶段：Node 构建 → Python 运行时 → Nginx
-├── docker-compose.yml        # backend + web，挂载 data / workspace
-├── config.example.yaml       # 配置模板（模型、沙箱、审批、上下文）
-├── start.bat                 # Windows 一键启动（前后端 + 自动开浏览器）
-├── docs/                     # 深度文档
-│   ├── whitepaper.md         # 技术白皮书
-│   ├── design-decisions.md   # 68 条设计决策
-│   ├── api.md                # REST / SSE 协议
-│   ├── models.md             # 模型接入
-│   ├── cli.md                # 命令行用法
-│   ├── frontend.md           # 前端实现
-│   ├── tool-development.md   # 工具扩展
-│   └── development.md        # 测试 / 交付 / 历史
+├── agent/  # 自研 Agent 内核（零 Agent 框架依赖）
+│   ├── loop.py  # 主循环：流式解析、工具执行、上下文压缩/摘要
+│   ├── provider.py  # OpenAI 兼容 Provider、usage、重试与错误分类
+│   ├── registry.py  # 工具注册表与 JSON Schema
+│   ├── storage.py  # SQLite 会话 / 消息持久化
+│   ├── config.py  # pydantic 严格配置校验
+│   └── tools/  # 文件、shell、HTTP、时间、run_python_code
+├── backend/  # FastAPI + SSE 网关
+│   ├── api/  # 路由与请求/响应 Schema
+│   └── service/  # AgentService、审批闸门、知识库、工作区
+├── frontend/  # React 19 + Vite + Tailwind
+│   └── src/  # components / store / lib / api / 测试
+├── tests/  # pytest：主循环、工具安全、审批、Web API
+├── docker/  # Nginx 配置与后端容器入口
+├── assets/  # README 截图（ui-chat / ui-approval）
+├── Dockerfile  # 多阶段：Node 构建 → Python 运行时 → Nginx
+├── docker-compose.yml  # backend + web，挂载 data / workspace
+├── config.example.yaml  # 配置模板（模型、沙箱、审批、上下文）
+├── start.bat  # Windows 一键启动（前后端 + 自动开浏览器）
+├── docs/  # 深度文档
+│   ├── whitepaper.md  # 技术白皮书
+│   ├── design-decisions.md  # 68 条设计决策
+│   ├── api.md  # REST / SSE 协议
+│   ├── models.md  # 模型接入
+│   ├── cli.md  # 命令行用法
+│   ├── frontend.md  # 前端实现
+│   ├── tool-development.md  # 工具扩展
+│   └── development.md  # 测试 / 交付 / 历史
+├── LICENSE  # Apache-2.0 开源协议
 └── README.md
 ```
 
