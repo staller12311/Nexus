@@ -41,10 +41,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
  * 上传用 XHR：只有 XHR 的 `upload.onprogress` 能拿到**上传百分比**
  * （fetch 无法上报上传进度），所以这里单独实现，其余接口仍走 request()。
  */
-function uploadFile<T>(path: string, file: File, onProgress?: (percent: number) => void): Promise<T> {
+function sessionHeaders(sessionId?: string | null): Record<string, string> {
+  return sessionId ? { 'X-Nexus-Session': sessionId } : {}
+}
+
+function uploadFile<T>(
+  path: string,
+  file: File,
+  onProgress?: (percent: number) => void,
+  sessionId?: string | null,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${apiBase()}/api${path}`)
+    if (sessionId) xhr.setRequestHeader('X-Nexus-Session', sessionId)
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && onProgress) {
         onProgress(Math.round((event.loaded / event.total) * 100))
@@ -141,10 +151,15 @@ export const api = {
     ),
 
   // ---- 知识库（RAG） ----
-  kbStatus: () => request<KnowledgeStatus>('/kb/status'),
-  kbDocs: () => request<{ docs: KnowledgeDoc[] }>('/kb/docs'),
-  uploadKbDoc: (file: File, onProgress?: (percent: number) => void) =>
-    uploadFile<KnowledgeDoc>('/kb/docs', file, onProgress),
+  kbStatus: (sessionId?: string | null) =>
+    request<KnowledgeStatus>('/kb/status', { headers: sessionHeaders(sessionId) }),
+  kbDocs: (sessionId?: string | null) =>
+    request<{ docs: KnowledgeDoc[] }>('/kb/docs', { headers: sessionHeaders(sessionId) }),
+  uploadKbDoc: (
+    file: File,
+    onProgress?: (percent: number) => void,
+    sessionId?: string | null,
+  ) => uploadFile<KnowledgeDoc>('/kb/docs', file, onProgress, sessionId),
   deleteKbDoc: (id: string) =>
     request<KnowledgeDoc>(`/kb/docs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 

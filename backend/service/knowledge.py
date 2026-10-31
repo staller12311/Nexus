@@ -41,6 +41,7 @@ STATUS_FAILED = "failed"
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS kb_docs (
     id          TEXT PRIMARY KEY,
+    session_id  TEXT,
     name        TEXT NOT NULL,
     size        INTEGER NOT NULL DEFAULT 0,
     pages       INTEGER NOT NULL DEFAULT 0,
@@ -71,6 +72,7 @@ class KnowledgeError(Exception):
 @dataclass(frozen=True)
 class KnowledgeDoc:
     id: str
+    session_id: str | None
     name: str
     size: int
     pages: int
@@ -300,7 +302,17 @@ class KnowledgeStore:
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.execute("PRAGMA journal_mode = WAL")
         self._conn.executescript(_SCHEMA)
+        self._ensure_session_column()
         self._conn.commit()
+
+    def _ensure_session_column(self) -> None:
+        """兼容旧库：没有 session_id 时 ALTER TABLE；新库由 _SCHEMA 直接建好。"""
+        columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(kb_docs)")}
+        if "session_id" not in columns:
+            self._conn.execute("ALTER TABLE kb_docs ADD COLUMN session_id TEXT")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_kb_docs_session ON kb_docs(session_id)"
+        )
 
     # ---- 生命周期 ----
     def close(self) -> None:
@@ -317,7 +329,9 @@ class KnowledgeStore:
         return "hybrid" if self._embedder is not None else "keyword"
 
     # ---- 文档 ----
-    def add_document(self, filename: str, data: bytes) -> KnowledgeDoc:
+    def add_document(
+        self, filename: str, data: bytes, *, session_id: str | None = None
+    ) -> KnowledgeDoc:
         """同步解析+切片+入库（调用方负责放到后台线程）。"""
         suffix = Path(filename).suffix.lower()
         if suffix not in PARSERS:
@@ -333,9 +347,9 @@ class KnowledgeStore:
         created = utc_now()
         with self._conn:
             self._conn.execute(
-                "INSERT INTO kb_docs (id, name, size, pages, chunk_count, status, mode, error, created_at)"
-                " VALUES (?, ?, ?, 0, 0, ?, ?, NULL, ?)",
-                (doc_id, filename, len(data), STATUS_PARSING, self.mode, created),
+                "INSERT INTO kb_docs (id, session_id, name, size, pages, chunk_count, status, mode, error, created_at)"
+                " VALUES (?, ?, ?, ?, 0, 0, ?, ?, NULL, ?)",
+                (doc_id, session_id, filename, len(data), STATUS_PARSING, self.mode, created),
             )
 
         self._process(doc_id, filename, data)
@@ -388,10 +402,25 @@ class KnowledgeStore:
             return None
         return [json.dumps(vector).encode("utf-8") for vector in vectors]
 
-    def list_documents(self) -> list[KnowledgeDoc]:
-        rows = self._conn.execute(
-            "SELECT * FROM kb_docs ORDER BY created_at DESC"
-        ).fetchall()
+    def list_documents(
+        self, session_id: str | None = None, *, include_global: bool = True
+    ) -> list[KnowledgeDoc]:
+        """列出文档；传 session_id 时只返回本会话文档（可附带旧版全局文档）。"""
+        if session_id is None:
+            rows = self._conn.execute(
+                "SELECT * FROM kb_docs ORDER BY created_at DESC"
+            ).fetchall()
+        elif include_global:
+            rows = self._conn.execute(
+                "SELECT * FROM kb_docs WHERE session_id = ? OR session_id IS NULL"
+                " ORDER BY created_at DESC",
+                (session_id,),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM kb_docs WHERE session_id = ? ORDER BY created_at DESC",
+                (session_id,),
+            ).fetchall()
         return [self._row_to_doc(row) for row in rows]
 
     def get_document(self, doc_id: str) -> KnowledgeDoc:
@@ -407,25 +436,42 @@ class KnowledgeStore:
             self._conn.execute("DELETE FROM kb_docs WHERE id = ?", (doc_id,))
         return document
 
-    def stats(self) -> dict[str, Any]:
-        row = self._conn.execute(
-            "SELECT COUNT(*) AS docs, COALESCE(SUM(chunk_count), 0) AS chunks FROM kb_docs"
-            " WHERE status = ?",
-            (STATUS_READY,),
-        ).fetchone()
+    def stats(self, session_id: str | None = None) -> dict[str, Any]:
+        if session_id is None:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS docs, COALESCE(SUM(chunk_count), 0) AS chunks FROM kb_docs"
+                " WHERE status = ?",
+                (STATUS_READY,),
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS docs, COALESCE(SUM(chunk_count), 0) AS chunks FROM kb_docs"
+                " WHERE status = ? AND (session_id = ? OR session_id IS NULL)",
+                (STATUS_READY, session_id),
+            ).fetchone()
         return {"docs": int(row["docs"]), "chunks": int(row["chunks"]), "mode": self.mode}
 
     # ---- 检索 ----
-    def search(self, query: str, top_k: int = DEFAULT_TOP_K) -> list[SearchHit]:
+    def search(
+        self, query: str, top_k: int = DEFAULT_TOP_K, *, session_id: str | None = None
+    ) -> list[SearchHit]:
         text = (query or "").strip()
         if not text:
             return []
-        rows = self._conn.execute(
-            "SELECT c.text, c.page, c.embedding, d.name AS doc_name"
-            " FROM kb_chunks c JOIN kb_docs d ON d.id = c.doc_id"
-            " WHERE d.status = ?",
-            (STATUS_READY,),
-        ).fetchall()
+        if session_id is None:
+            rows = self._conn.execute(
+                "SELECT c.text, c.page, c.embedding, d.name AS doc_name"
+                " FROM kb_chunks c JOIN kb_docs d ON d.id = c.doc_id"
+                " WHERE d.status = ?",
+                (STATUS_READY,),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT c.text, c.page, c.embedding, d.name AS doc_name"
+                " FROM kb_chunks c JOIN kb_docs d ON d.id = c.doc_id"
+                " WHERE d.status = ? AND (d.session_id = ? OR d.session_id IS NULL)",
+                (STATUS_READY, session_id),
+            ).fetchall()
         if not rows:
             return []
 
@@ -467,9 +513,11 @@ class KnowledgeStore:
             )
         return hits
 
-    def search_as_context(self, query: str, top_k: int = DEFAULT_TOP_K) -> str:
+    def search_as_context(
+        self, query: str, top_k: int = DEFAULT_TOP_K, *, session_id: str | None = None
+    ) -> str:
         """给模型看的格式化结果（带来源，超预算就截断）。"""
-        hits = self.search(query, top_k)
+        hits = self.search(query, top_k, session_id=session_id)
         if not hits:
             return "知识库中没有找到相关内容。（提示：知识库为空或关键词不匹配）"
         lines = [f"以下是从本地知识库检索到的 {len(hits)} 段内容（按相关度排序）："]
@@ -490,6 +538,7 @@ class KnowledgeStore:
     def _row_to_doc(row: sqlite3.Row) -> KnowledgeDoc:
         return KnowledgeDoc(
             id=row["id"],
+            session_id=row["session_id"] if "session_id" in row.keys() else None,
             name=row["name"],
             size=int(row["size"]),
             pages=int(row["pages"]),
@@ -502,16 +551,19 @@ class KnowledgeStore:
 
 
 # ---------------------------------------------------------------- 工具
-def build_search_tool(service: "KnowledgeService") -> Any:
+def build_search_tool(
+    service: "KnowledgeService", session_id: str | None = None
+) -> Any:
     """构造 `search_knowledge_base` 的 ToolSpec（注入方式，不改 agent 的 KNOWN_TOOLS）。
 
+    ``session_id`` 在构造时绑定：当前会话的文档优先，旧版全局文档仍可检索。
     每次调用现开一个 ``KnowledgeStore``（一次 sqlite 连接），避免把连接跨线程共享。
     """
     from agent.registry import ToolSpec
 
     def handler(query: str, top_k: int = DEFAULT_TOP_K) -> str:
         try:
-            return service.search_as_context(str(query), int(top_k))
+            return service.search_as_context(str(query), int(top_k), session_id=session_id)
         except Exception as exc:  # noqa: BLE001 - 工具失败要作为"错误：…"回给模型
             return f"错误：知识库检索失败（{type(exc).__name__}）"
 
@@ -519,6 +571,7 @@ def build_search_tool(service: "KnowledgeService") -> Any:
         name="search_knowledge_base",
         description=(
             "检索用户上传到本地知识库的文档（PDF / Word / Markdown / 文本等）并返回最相关的原文片段。"
+            "检索范围以当前会话绑定的文档为主（同时兼容旧的全局文档）。"
             "凡是用户要求「解析/总结/查找/回答」某个上传文档的内容，或问题里提到文档、资料、附件、报告、"
             "手册、说明书时，都必须先调用本工具；不要用 list_dir / read_file 去猜文件路径（上传的文档"
             "不在 workspace 里）。返回结果带来源文件名与页码，可直接引用。"
@@ -549,7 +602,9 @@ class KnowledgeService:
     def _store(self) -> KnowledgeStore:
         return KnowledgeStore(self.db_path, embedding_provider=self._embedding_provider)
 
-    def submit(self, filename: str, data: bytes) -> KnowledgeDoc:
+    def submit(
+        self, filename: str, data: bytes, *, session_id: str | None = None
+    ) -> KnowledgeDoc:
         """先落一条 parsing 记录并返回，再在后台线程里解析（前端轮询状态）。"""
         with self._store() as store:
             suffix = Path(filename).suffix.lower()
@@ -563,9 +618,9 @@ class KnowledgeService:
             doc_id = uuid.uuid4().hex[:12]
             with store._conn:
                 store._conn.execute(
-                    "INSERT INTO kb_docs (id, name, size, pages, chunk_count, status, mode, error,"
-                    " created_at) VALUES (?, ?, ?, 0, 0, ?, ?, NULL, ?)",
-                    (doc_id, filename, len(data), STATUS_PARSING, store.mode, utc_now()),
+                    "INSERT INTO kb_docs (id, session_id, name, size, pages, chunk_count, status,"
+                    " mode, error, created_at) VALUES (?, ?, ?, ?, 0, 0, ?, ?, NULL, ?)",
+                    (doc_id, session_id, filename, len(data), STATUS_PARSING, store.mode, utc_now()),
                 )
             document = store.get_document(doc_id)
 
@@ -583,21 +638,25 @@ class KnowledgeService:
         thread.start()
         return document
 
-    def list_documents(self) -> list[KnowledgeDoc]:
+    def list_documents(
+        self, session_id: str | None = None, *, include_global: bool = True
+    ) -> list[KnowledgeDoc]:
         with self._store() as store:
-            return store.list_documents()
+            return store.list_documents(session_id, include_global=include_global)
 
     def delete_document(self, doc_id: str) -> KnowledgeDoc:
         with self._store() as store:
             return store.delete_document(doc_id)
 
-    def stats(self) -> dict[str, Any]:
+    def stats(self, session_id: str | None = None) -> dict[str, Any]:
         with self._store() as store:
-            return store.stats()
+            return store.stats(session_id)
 
-    def search_as_context(self, query: str, top_k: int = DEFAULT_TOP_K) -> str:
+    def search_as_context(
+        self, query: str, top_k: int = DEFAULT_TOP_K, *, session_id: str | None = None
+    ) -> str:
         with self._store() as store:
-            return store.search_as_context(query, top_k)
+            return store.search_as_context(query, top_k, session_id=session_id)
 
     def wait_for(self, doc_id: str, timeout: float = 30.0) -> None:
         """仅测试/脚本用：等后台线程结束。"""

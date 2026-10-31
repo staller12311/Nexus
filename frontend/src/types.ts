@@ -148,6 +148,9 @@ export type ApiMessage = {
 /** 知识库文档（GET /api/kb/docs） */
 export type KnowledgeDoc = {
   id: string
+  /** 绑定的会话 id；null/缺省 = 全局文档（左下角面板上传，所有会话可见）。
+   *  后端一定会返回该字段（可为 null），这里放宽成可选是为了不破坏既有测试夹具。 */
+  session_id?: string | null
   name: string
   size: number
   pages: number

@@ -461,6 +461,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // ---- 知识库（RAG） ----
   loadKb: async () => {
+    // 左下角面板是「全局管理视角」：不带 session，列出库里所有文档
+    // （含各会话专属文档，靠每行的「本会话 / 全局」标签区分）
     try {
       const [status, { docs }] = await Promise.all([api.kbStatus(), api.kbDocs()])
       set({ kbStatus: status, kbDocs: Array.isArray(docs) ? docs : [] })
@@ -470,6 +472,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   uploadKbDoc: async (file) => {
+    // 面板上传 = 全局文档（session_id 留空），所有会话都能检索到
     set({ kbError: null, kbUpload: { name: file.name, percent: 0 } })
     try {
       await api.uploadKbDoc(file, (percent) =>
@@ -479,7 +482,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       for (let attempt = 0; attempt < 120; attempt += 1) {
         const { docs } = await api.kbDocs()
         set({ kbDocs: Array.isArray(docs) ? docs : [] })
-        const target = (docs ?? []).find((doc) => doc.name === file.name)
+        const target = (docs ?? []).find((doc) => doc.name === file.name && !doc.session_id)
         if (!target || target.status !== 'parsing') break
         await new Promise((resolve) => setTimeout(resolve, 400))
       }
@@ -504,6 +507,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   uploadKbDocs: async (files) => {
     if (files.length === 0) return
+    const sessionId = get().sessionId
     const cards: UploadCard[] = files.map((file, index) => ({
       id: `kb-${Date.now()}-${index}`,
       name: file.name,
@@ -521,19 +525,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const file = files[index]
       const card = cards[index]
       try {
-        await api.uploadKbDoc(file, (percent) =>
-          patch(card.id, { percent, status: percent >= 100 ? 'parsing' : 'uploading' }),
+        await api.uploadKbDoc(
+          file,
+          (percent) =>
+            patch(card.id, { percent, status: percent >= 100 ? 'parsing' : 'uploading' }),
+          sessionId,
         )
         patch(card.id, { percent: 100, status: 'parsing' })
         // 复用面板那套轮询：解析完成就变成「文档已加入知识库」
         let finalStatus = 'ready'
         let misses = 0
         for (let attempt = 0; attempt < 120; attempt += 1) {
-          const { docs } = await api.kbDocs()
+          // 轮询只看会话视角（本会话 + 全局）来定位这份文件；
+          // 面板列表由结尾的 loadKb() 统一刷新，避免两种视角互相覆盖
+          const { docs } = await api.kbDocs(sessionId)
           const target = (docs ?? []).find((doc) => doc.name === file.name)
           if (target) {
             misses = 0
-            set({ kbDocs: Array.isArray(docs) ? docs : [] })
             if (target.status !== 'parsing') {
               finalStatus = target.status
               if (target.status === 'failed') patch(card.id, { error: target.error ?? '解析失败' })

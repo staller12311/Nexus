@@ -203,11 +203,15 @@ class AgentService:
         )
         return self.config.model_copy(update={"agent": agent})
 
-    def _build_registry(self) -> ToolRegistry:
-        """按当前工作区重建工具注册表，并重新注入 KB / web_search 工具。"""
+    def _build_registry(self, session_id: str | None = None) -> ToolRegistry:
+        """按当前工作区重建工具注册表，并重新注入 KB / web_search 工具。
+
+        ``session_id`` 绑定到 search_knowledge_base：主对话只检索本会话文档，
+        旧版全局文档仍兼容；``list_tools`` 等后台调用不传 session。
+        """
         registry = build_registry(self._config_with_workspace())
         try:
-            registry.register(build_search_tool(self.knowledge))
+            registry.register(build_search_tool(self.knowledge, session_id=session_id))
         except ValueError:
             pass
         try:
@@ -659,9 +663,9 @@ class AgentService:
             history = storage.get_messages(record.id, with_attachments=True) or None
             try:
                 loop = AgentLoop.from_config(
-                    self._loop_config(),
+                    self._loop_config(record.id),
                     provider,
-                    self.registry,
+                    self._build_registry(record.id),
                     storage=storage,
                     session_id=record.id,
                     history=history,
@@ -771,9 +775,9 @@ class AgentService:
             history = storage.get_messages(record.id, with_attachments=True) or None
             try:
                 loop = AgentLoop.from_config(
-                    self._loop_config(),
+                    self._loop_config(record.id),
                     provider,
-                    self.registry,
+                    self._build_registry(record.id),
                     storage=storage,
                     session_id=record.id,
                     history=history,
@@ -827,27 +831,44 @@ class AgentService:
                 provider.close()
 
     # ---- 内部 -----------------------------------------------------------
-    def _loop_config(self) -> AppConfig:
-        """拼「运行时才知道」的提示词增强：知识库文档名 + 附加工作区（挂载）清单。
+    def _loop_config(self, session_id: str | None = None) -> AppConfig:
+        """拼「运行时才知道」的提示词增强：本会话文档 + 附加工作区（挂载）清单。
 
         只在有内容时生效；会话自己设置过 system 提示词时（历史里已有 system 消息），
         ``AgentLoop`` 会优先用历史的，这里的增强不会覆盖用户的自定义。
         """
         additions: list[str] = []
 
-        # ① 本地知识库文档清单
+        # ① 知识库文档清单：本会话专属 / 全局分开列，模型才能自己判断检索范围
         try:
-            names = [doc.name for doc in self.knowledge.list_documents() if doc.status == "ready"]
+            docs = [
+                doc
+                for doc in self.knowledge.list_documents(session_id=session_id)
+                if doc.status == "ready"
+            ]
         except Exception:  # noqa: BLE001 - 知识库读失败不能拖垮对话
-            names = []
-        if names:
-            shown = "、".join(names[:10]) + ("等" if len(names) > 10 else "")
-            additions.append(
-                "\n\n【本地知识库】当前知识库里有这些文档："
-                f"{shown}。"
-                "用户提到这些文档、或要求解析/总结/查找文档内容时，先调用 search_knowledge_base 检索；"
-                "这些文件不在 workspace 里，不要用 list_dir / read_file 去猜路径。"
-            )
+            docs = []
+        if docs:
+            own = [doc for doc in docs if session_id and doc.session_id == session_id]
+            shared = [doc for doc in docs if doc.session_id is None]
+            sections: list[str] = []
+            for label, group in (("【当前对话专属文档】", own), ("【全局知识库文档】", shared)):
+                if not group:
+                    continue
+                names = "、".join(doc.name for doc in group[:10])
+                if len(group) > 10:
+                    names += " 等"
+                sections.append(f"{label}：{names}。")
+            if sections:
+                additions.append(
+                    "\n\n" + "\n".join(sections) + "\n"
+                    "当用户提出总结、分析、解读类的问题（如「识别一下」「总结一下」"
+                    "「主要讲什么」「帮我看看这个文档」）而**没有指定具体对象**时："
+                    "必须优先检索【当前对话专属文档】，直接调用 search_knowledge_base，"
+                    "**绝对不要反问用户「你要识别哪个文件」**，也不要要求用户重新上传；"
+                    "专属文档只有一份时，默认就是它；专属文档为空时，再检索【全局知识库文档】。"
+                    "这些文件不在 workspace 里，不要用 list_dir / read_file 去猜路径。"
+                )
 
         # ② 附加工作区（命名挂载）：不告诉模型，它就只会用相对路径，白配
         if self._extras:

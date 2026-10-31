@@ -120,6 +120,29 @@ describe('输入框上传文档（回形针 + 聊天卡片）', () => {
     expect(input.multiple).toBe(true)
   })
 
+  it('本会话没有专属文档、但全局库有文档时，输入框上方给出全局知识库提示条', async () => {
+    stubFetch([kbDoc('全局财报.pdf')])
+    useChatStore.setState({ sessionId: 's-hint' })
+    await useChatStore.getState().loadKb()
+    renderComposer()
+
+    const hint = await screen.findByTestId('kb-global-hint')
+    expect(hint).toHaveTextContent('已加载全局知识库（1 个文档）')
+  })
+
+  it('本会话已有专属文档时，不再提示全局知识库', async () => {
+    stubFetch([
+      kbDoc('全局财报.pdf'),
+      { ...kbDoc('本会话纪要.docx'), session_id: 's-hint' },
+    ])
+    useChatStore.setState({ sessionId: 's-hint' })
+    await useChatStore.getState().loadKb()
+    renderComposer()
+
+    await waitFor(() => expect(screen.getByLabelText('上传文档到知识库')).toBeInTheDocument())
+    expect(screen.queryByTestId('kb-global-hint')).not.toBeInTheDocument()
+  })
+
   it('选中文件后：立刻出现「正在上传文档 xxx」卡片，并带进度条', async () => {
     stubFetch([kbDoc('README.md')])
     const user = userEvent.setup()

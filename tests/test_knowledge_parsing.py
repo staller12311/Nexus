@@ -76,3 +76,21 @@ def test_knowledge_store_accepts_docx_and_pdf(tmp_path: Path) -> None:
         assert docx_doc.chunk_count >= 1
         assert pdf_doc.chunk_count >= 1
         assert store.stats()["docs"] == 2
+
+
+def test_documents_and_search_are_scoped_by_session(tmp_path: Path) -> None:
+    with KnowledgeStore(tmp_path / "kb.db") as store:
+        store.add_document("s1.docx", make_docx_bytes("会话一专属内容"), session_id="s1")
+        store.add_document("s2.docx", make_docx_bytes("会话二专属内容"), session_id="s2")
+        store.add_document("legacy.txt", b"legacy global content")
+
+        names_s1 = {doc.name for doc in store.list_documents(session_id="s1")}
+        assert names_s1 == {"s1.docx", "legacy.txt"}
+        names_s2 = {doc.name for doc in store.list_documents(session_id="s2")}
+        assert names_s2 == {"s2.docx", "legacy.txt"}
+
+        hits_s1 = store.search("专属内容", session_id="s1")
+        assert hits_s1 and all("s1.docx" in hit.doc_name for hit in hits_s1)
+        hits_s2 = store.search("专属内容", session_id="s2")
+        assert hits_s2 and all("s2.docx" in hit.doc_name for hit in hits_s2)
+        assert store.stats(session_id="s1")["docs"] == 2

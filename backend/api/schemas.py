@@ -65,6 +65,7 @@ class FetchModelsOut(BaseModel):
 
 class KnowledgeDocOut(BaseModel):
     id: str
+    session_id: str | None = None
     name: str
     size: int
     pages: int

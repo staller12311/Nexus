@@ -139,6 +139,7 @@ sequenceDiagram
 - **真·流式 Web 体验**：SSE 打字机、思考链折叠、工具卡实时状态、上下文摘要通知，React 19 + Zustand
 - **代码搜索与 Git 感知**：`search_code` 在 workspace 内按关键字 + 扩展名检索，`git_status` 只读返回 `git status --short`，不用模型猜文件
 - **分级安全边界**：workspace realpath 越界校验、`@mount` 只读挂载、命令/域名白名单、危险工具审批闸门；代码执行不是 OS 隔离，详见下方安全提示
+- **会话专属知识库**：文档上传时绑定当前会话，模型只检索本会话文档（旧版全局文档仍兼容）；本会话有文档时直接检索，不再反问用户
 - **长上下文记忆**：1M 窗口校准 + 大参数历史压缩 + 80% 自动摘要（不再粗暴砍历史）
 - **协议级健壮性**：非法 `function.arguments` 本地拦截、工具异常回灌、上游 400 防御
 - **可观测与成本**：Token/缓存命中率/节省估算、结构化日志与密钥脱敏、会话级统计
@@ -178,7 +179,7 @@ nexus-zhishu/
 ├── assets/                   # README 截图（ui-chat / ui-approval）
 ├── docs/                     # 深度文档
 │   ├── whitepaper.md         # 技术白皮书
-│   ├── design-decisions.md   # 71 条设计决策
+│   ├── design-decisions.md   # 72 条设计决策
 │   ├── api.md                # REST / SSE / 图片上传协议
 │   ├── models.md             # 模型接入（含视觉模型）
 │   ├── cli.md                # 命令行用法
@@ -363,7 +364,7 @@ start.bat
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-当前 **351 passed / 2 skipped**；前端 **40 个测试文件 / 213 passed + 6 skipped**。
+当前 **360 passed / 2 skipped**；前端 **40 个测试文件 / 215 passed + 6 skipped**。
 
 完整测试范围、交付清单、已知待办与已清偿技术债见 [docs/development.md](docs/development.md)；新增工具（5 步 + 可运行模板）见 [docs/tool-development.md](docs/tool-development.md)。
 
@@ -372,7 +373,7 @@ start.bat
 | 文档 | 内容 |
 |---|---|
 | [技术白皮书](docs/whitepaper.md) | 项目概述、架构选型、核心突破、安全边界 |
-| [设计决策](docs/design-decisions.md) | 71 条关键取舍与原因 |
+| [设计决策](docs/design-decisions.md) | 72 条关键取舍与原因 |
 | [Web API](docs/api.md) | REST 端点、SSE 事件协议、审批流 |
 | [模型接入](docs/models.md) | 多 provider 配置与 `config check` |
 | [CLI 用法](docs/cli.md) | 命令行、交互模式、会话恢复 |
@@ -382,4 +383,4 @@ start.bat
 
 ## 设计决策
 
-71 条设计决策（配置校验、路径语义、工具边界、流式协议、审批线程模型、上下文摘要、前端交互）见 [docs/design-decisions.md](docs/design-decisions.md)。
+72 条设计决策（配置校验、路径语义、工具边界、流式协议、审批线程模型、上下文摘要、前端交互）见 [docs/design-decisions.md](docs/design-decisions.md)。

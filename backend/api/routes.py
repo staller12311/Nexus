@@ -11,7 +11,7 @@ from pathlib import Path
 from dataclasses import asdict
 from typing import Any, AsyncIterator
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
 from agent.config import ConfigError
@@ -705,10 +705,19 @@ def reset_workspace(request: Request) -> WorkspaceOut:
 
 
 # ---- 知识库（RAG） -------------------------------------------------------
+def _kb_session_id(query: str | None, header: str | None) -> str | None:
+    """前端用 X-Nexus-Session 头传当前会话；手动调用也可用 ?session_id=。"""
+    return (header or query or "").strip() or None
+
+
 @router.get("/kb/status", response_model=KnowledgeStatusOut, summary="知识库状态与检索管线")
-def knowledge_status(request: Request) -> KnowledgeStatusOut:
+def knowledge_status(
+    request: Request,
+    session_id: str | None = Query(default=None),
+    x_nexus_session: str | None = Header(default=None, alias="X-Nexus-Session"),
+) -> KnowledgeStatusOut:
     service = get_service(request)
-    stats = service.knowledge.stats()
+    stats = service.knowledge.stats(_kb_session_id(session_id, x_nexus_session))
     mode = stats["mode"]
     pipeline = (
         "BM25 关键词检索（中文双字 + 英文整词）"
@@ -743,9 +752,14 @@ def knowledge_status(request: Request) -> KnowledgeStatusOut:
 
 
 @router.get("/kb/docs", response_model=KnowledgeDocsOut, summary="列出知识库文档")
-def knowledge_docs(request: Request) -> KnowledgeDocsOut:
+def knowledge_docs(
+    request: Request,
+    session_id: str | None = Query(default=None),
+    x_nexus_session: str | None = Header(default=None, alias="X-Nexus-Session"),
+) -> KnowledgeDocsOut:
     service = get_service(request)
-    return KnowledgeDocsOut(docs=[KnowledgeDocOut(**vars(doc)) for doc in service.knowledge.list_documents()])
+    docs = service.knowledge.list_documents(_kb_session_id(session_id, x_nexus_session))
+    return KnowledgeDocsOut(docs=[KnowledgeDocOut(**vars(doc)) for doc in docs])
 
 
 @router.post(
@@ -754,11 +768,24 @@ def knowledge_docs(request: Request) -> KnowledgeDocsOut:
     status_code=201,
     summary="上传文档（后台解析+切片，前端轮询状态）",
 )
-async def upload_knowledge_doc(request: Request, file: UploadFile = File(...)) -> KnowledgeDocOut:
+async def upload_knowledge_doc(
+    request: Request,
+    file: UploadFile = File(...),
+    session_id: str | None = Form(default=None),
+    x_nexus_session: str | None = Header(default=None, alias="X-Nexus-Session"),
+) -> KnowledgeDocOut:
     service = get_service(request)
+    effective_session = _kb_session_id(session_id, x_nexus_session)
+    if effective_session:
+        try:
+            service.get_session(effective_session)
+        except StorageError as exc:
+            raise HTTPException(status_code=404, detail=f"会话不存在：{effective_session}") from exc
     data = await file.read()
     try:
-        document = service.knowledge.submit(file.filename or "unnamed", data)
+        document = service.knowledge.submit(
+            file.filename or "unnamed", data, session_id=effective_session
+        )
     except KnowledgeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     logger.info("上传知识库文档 name=%s size=%d status=%s", document.name, document.size, document.status)

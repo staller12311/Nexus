@@ -236,8 +236,13 @@ def _make_symlink(target: Path, link: Path, *, directory: bool) -> str:
     attempts: list[str] = []
     try:
         os.symlink(target, link, target_is_directory=directory)
-        _CREATED_LINKS.append(link)
-        return "symlink"
+        # 关键：某些 Windows 安全策略 / 沙箱会让 os.symlink **静默成功但什么也不创建**
+        # （不抛异常，链接却不存在）。本机实测就是这种情形，若不复验，
+        # 下面的 junction 回退永远不会触发，测试会以「文件不存在」的假象失败。
+        if os.path.lexists(link) or link.is_symlink():
+            _CREATED_LINKS.append(link)
+            return "symlink"
+        attempts.append("os.symlink 静默失败：未抛异常，但链接不存在")
     except (OSError, NotImplementedError) as exc:
         attempts.append(f"os.symlink 失败：{type(exc).__name__}: {exc}")
 
@@ -245,16 +250,18 @@ def _make_symlink(target: Path, link: Path, *, directory: bool) -> str:
         completed = subprocess.run(
             ["cmd", "/c", "mklink", "/J", str(link), str(target)],
             capture_output=True,
-            text=True,
             shell=False,
         )
+        # cmd 的输出是 GBK：不要用 text=True，否则解码异常会把这里炸掉
+        raw = (completed.stdout or b"") + (completed.stderr or b"")
+        try:
+            detail = raw.decode("mbcs", errors="replace").strip()
+        except LookupError:
+            detail = raw.decode("utf-8", errors="replace").strip()
         if completed.returncode == 0 and Path(link).exists():
             _CREATED_LINKS.append(link)
             return "junction"
-        attempts.append(
-            f"mklink /J 失败（退出码 {completed.returncode}）："
-            f"{(completed.stdout or '') + (completed.stderr or '')}".strip()
-        )
+        attempts.append(f"mklink /J 失败（退出码 {completed.returncode}）：{detail}")
 
     pytest.skip(
         "当前环境无法创建符号链接/目录联接，故无法验证符号链接越界"

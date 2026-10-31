@@ -22,7 +22,7 @@ Nexus 智枢是一套**本地优先、可审计、模型可热插拔**的私有�
 | 交互 | FastAPI SSE 网关 + React 19 前端，打字机 / 思考链 / 工具卡三态 |
 | 安全 | workspace realpath 沙箱、`@mount` 只读挂载、命令/域名白名单、审批闸门 |
 | 上下文 | 1M 窗口校准、工具参数历史压缩、80% 自动摘要（替代粗暴裁剪） |
-| 质量 | 后端 351 用例（2 skip）、前端 213 用例（6 skip）、`tsc` 全绿 |
+| 质量 | 后端 356 用例（2 skip）、前端 213 用例（6 skip）、`tsc` 全绿 |
 
 **定位**：给个人开发者 / 小团队一套“能写代码、能改文件、能被审计”的本地 AI 工程助手；
 而不是把 API Key、代码与执行权限全部交给云端 SaaS。
@@ -42,7 +42,7 @@ Nexus 智枢是一套**本地优先、可审计、模型可热插拔**的私有�
 4. **协议脆弱**：模型偶发把 `function.arguments` 的引号转义写坏，上游直接 400，重试到轮数上限。
 5. **长会话渲染**：几千条工具结果 + Markdown + 代码高亮，前端很容易被拖垮。
 
-Nexus 智枢逐项给出工程解，并把每个决策固化进 README 的 71 条设计决策与测试用例中。
+Nexus 智枢逐项给出工程解，并把每个决策固化进 README 的 72 条设计决策与测试用例中。
 
 ### 1.2 目标与非目标
 
@@ -276,9 +276,9 @@ sequenceDiagram
 
 ### 3.9 工程验证
 
-- 后端 **351 passed / 2 skipped**：涵盖主循环、Provider、存储、工具安全、配置、CLI、Web API、
+- 后端 **356 passed / 2 skipped**：涵盖主循环、Provider、存储、工具安全、配置、CLI、Web API、
   审批、代码执行、上下文压缩/摘要、真实 HTTP 假端点；
-- 前端 **40 文件 / 213 passed + 6 skipped**：流式渲染、工具卡、审批卡、滚动/StrictMode 稳定性、
+- 前端 **40 文件 / 215 passed + 6 skipped**：流式渲染、工具卡、审批卡、滚动/StrictMode 稳定性、
   模型管理、Token 统计、错误边界；
 - `tsc --noEmit` 全绿；真实模型 + 假端点双路径验证。
 
@@ -369,9 +369,9 @@ sequenceDiagram
 
 | 指标 | 数值 / 说明 |
 |---|---|
-| 后端测试 | 351 passed / 2 skipped |
-| 前端测试 | 40 files / 213 passed + 6 skipped |
-| 设计决策 | 71 条（README「设计决策」章节） |
+| 后端测试 | 356 passed / 2 skipped |
+| 前端测试 | 40 files / 215 passed + 6 skipped |
+| 设计决策 | 72 条（README「设计决策」章节） |
 | 支持模型 | 任意 OpenAI 兼容端点；内置 DeepSeek/Qwen/Ollama 示例 |
 | 上下文窗口 | DeepSeek-V4 / Qwen3.8-Flash：1M；自定义未知模型：128K 保守估计 |
 | 审批超时 | 默认 300s，超时/断连按拒绝 |

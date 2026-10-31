@@ -24,15 +24,17 @@ export function KnowledgePanel() {
   const loadKb = useChatStore((state) => state.loadKb)
   const uploadKbDoc = useChatStore((state) => state.uploadKbDoc)
   const deleteKbDoc = useChatStore((state) => state.deleteKbDoc)
+  const sessionId = useChatStore((state) => state.sessionId)
 
   const [open, setOpen] = useState(true)
   const [dragging, setDragging] = useState(false)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
+  // 面板是全局管理视角：切换会话也要刷新（专属文档会带着「本会话」标签出现）
   useEffect(() => {
     void loadKb()
-  }, [loadKb])
+  }, [loadKb, sessionId])
 
   const accept = status?.supported?.join(',') ?? '.pdf,.docx,.txt,.md'
 
@@ -53,6 +55,7 @@ export function KnowledgePanel() {
       >
         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         知识库
+        <span className="rounded bg-gray-100 px-1 text-[9px] font-normal text-gray-500">全部</span>
         <span className="ml-1 font-normal text-gray-400">
           {status ? `${status.docs} 文档 · ${status.chunks} 片段` : ''}
         </span>
@@ -134,6 +137,15 @@ export function KnowledgePanel() {
                         doc.status === 'failed' ? 'text-rose-500' : 'text-gray-400'
                       }`}
                     >
+                      <span
+                        className={`mr-1 rounded px-1 text-[9px] ${
+                          doc.session_id
+                            ? 'bg-sky-50 text-sky-600'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {doc.session_id ? '本会话' : '全局'}
+                      </span>
                       {statusText(doc)} · {humanSize(doc.size)}
                     </div>
                   </div>

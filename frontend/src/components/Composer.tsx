@@ -34,6 +34,8 @@ export function Composer() {
   const stopStreaming = useChatStore((state) => state.stopStreaming)
   const focusSignal = useChatStore((state) => state.draftFocusSignal)
   const kbStatus = useChatStore((state) => state.kbStatus)
+  const kbDocs = useChatStore((state) => state.kbDocs)
+  const sessionId = useChatStore((state) => state.sessionId)
   const uploadKbDocs = useChatStore((state) => state.uploadKbDocs)
   const workspace = useChatStore((state) => state.workspace)
   const loadWorkspace = useChatStore((state) => state.loadWorkspace)
@@ -164,9 +166,24 @@ export function Composer() {
   const hasStats = Boolean(stats && stats.prompt_tokens > 0)
   const savings = hasStats ? savedAmount(stats?.cache_hit_tokens ?? 0) : 0
 
+  // 会话专属知识库：本会话还没传过文件、但全局库有东西时，给一条提示条，
+  // 免得用户以为「知识库是空的」或不知道 AI 已经能看到全局文档。
+  const ownKbCount = sessionId ? kbDocs.filter((doc) => doc.session_id === sessionId).length : 0
+  const globalKbCount = kbDocs.filter((doc) => !doc.session_id && doc.status === 'ready').length
+  const showGlobalKbHint = ownKbCount === 0 && globalKbCount > 0
+
   return (
     <div>
       <div className="mx-auto w-full max-w-3xl px-4 py-3">
+        {showGlobalKbHint && (
+          <div
+            data-testid="kb-global-hint"
+            className="mb-2 flex items-center gap-1.5 rounded-lg border border-sky-100 bg-sky-50 px-2.5 py-1.5 text-[11px] text-sky-700"
+          >
+            <span aria-hidden>📚</span>
+            已加载全局知识库（{globalKbCount} 个文档），本会话可直接提问
+          </div>
+        )}
         {/* 输入区 + 工具栏 + 底部提示统一收进一张卡片里；卡片之外只有页面背景 */}
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors focus-within:border-sky-400">
           {pendingImages.length > 0 && (

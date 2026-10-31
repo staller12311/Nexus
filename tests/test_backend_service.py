@@ -278,6 +278,127 @@ def test_knowledge_upload_parse_then_delete(api) -> None:
     assert client.get("/api/kb/status").json()["docs"] == 0
 
 
+def test_knowledge_documents_are_scoped_by_session(api) -> None:
+    client, _service, _config = api
+    session = client.post("/api/sessions", json={}).json()
+    session_id = session["id"]
+
+    response = client.post(
+        "/api/kb/docs",
+        headers={"X-Nexus-Session": session_id},
+        files={"file": ("专属.txt", b"session scoped needle", "text/plain")},
+    )
+    assert response.status_code == 201
+    created = response.json()
+    assert created["session_id"] == session_id
+    doc = _wait_for_kb_doc(client, created["id"])
+    assert doc["chunk_count"] >= 1
+
+    docs = client.get("/api/kb/docs", headers={"X-Nexus-Session": session_id}).json()["docs"]
+    assert [item["name"] for item in docs] == ["专属.txt"]
+    status = client.get("/api/kb/status", headers={"X-Nexus-Session": session_id}).json()
+    assert status["docs"] == 1
+    # 不传 session 的全局视图仍能看到它（兼容旧行为）
+    assert client.get("/api/kb/docs").json()["docs"]
+
+
+def test_knowledge_upload_without_session_is_global(api) -> None:
+    """不带会话头 = 左下角全局面板上传，落库 session_id 为 NULL。"""
+    client, _service, _config = api
+    response = client.post(
+        "/api/kb/docs", files={"file": ("全局.txt", b"global doc content", "text/plain")}
+    )
+    assert response.status_code == 201
+    assert response.json()["session_id"] is None
+
+
+def test_knowledge_upload_rejects_unknown_session(api) -> None:
+    """会话头指向不存在的会话要 404，而不是静默写进一个孤儿 session_id。"""
+    client, _service, _config = api
+    response = client.post(
+        "/api/kb/docs",
+        headers={"X-Nexus-Session": "no-such-session"},
+        files={"file": ("x.txt", b"orphan", "text/plain")},
+    )
+    assert response.status_code == 404
+
+
+def test_loop_config_separates_session_and_global_documents(api) -> None:
+    """系统提示词里【当前对话专属文档】与【全局知识库文档】必须分开列。
+
+    这是「模型反问你要识别哪个文件」的直接修复点：文档清单混成一坨时，
+    模型分不清这份文件属于当前对话还是全局库，就会反问。
+    """
+    client, service, _config = api
+    session_id = client.post("/api/sessions", json={}).json()["id"]
+
+    scoped = client.post(
+        "/api/kb/docs",
+        headers={"X-Nexus-Session": session_id},
+        files={"file": ("专属.txt", b"session scoped needle", "text/plain")},
+    ).json()
+    _wait_for_kb_doc(client, scoped["id"])
+    global_doc = client.post(
+        "/api/kb/docs", files={"file": ("全局.txt", b"global needle", "text/plain")}
+    ).json()
+    _wait_for_kb_doc(client, global_doc["id"])
+
+    prompt = service._loop_config(session_id).system_prompt_text()
+    own_line = next(
+        line for line in prompt.splitlines() if line.startswith("【当前对话专属文档】")
+    )
+    shared_line = next(line for line in prompt.splitlines() if line.startswith("【全局知识库文档】"))
+    assert "专属.txt" in own_line and "全局.txt" not in own_line
+    assert "全局.txt" in shared_line and "专属.txt" not in shared_line
+    # 关键指令：模糊提问时直接检索，禁止反问
+    assert "不要反问" in prompt
+
+    # 换一个没上传过文件的会话：只应出现全局段，不该出现专属段。
+    # 注意按「行首」判断 —— 指令正文里本来就会提到「当前对话专属文档」这几个字，
+    # 用 substring 判断会把指令本身误判成清单。
+    other_id = client.post("/api/sessions", json={}).json()["id"]
+    other_prompt = service._loop_config(other_id).system_prompt_text()
+    other_lines = other_prompt.splitlines()
+    assert not any(line.startswith("【当前对话专属文档】") for line in other_lines)
+    assert any(line.startswith("【全局知识库文档】") for line in other_lines)
+
+
+def test_search_tool_is_bound_to_current_session(api) -> None:
+    """检索工具按会话绑定：能查到自己 + 全局，查不到别的会话。
+
+    这是「上传完直接问总结」链路里真正干活的那一环：模型看到的工具本身就只
+    覆盖本会话，所以它不会因为检索到别人的文档而混淆，也不需要反问用户在说哪份。
+    """
+    client, service, _config = api
+    s1 = client.post("/api/sessions", json={}).json()["id"]
+    s2 = client.post("/api/sessions", json={}).json()["id"]
+
+    first = client.post(
+        "/api/kb/docs",
+        headers={"X-Nexus-Session": s1},
+        files={"file": ("甲.txt", "苹果园的收成很好".encode(), "text/plain")},
+    ).json()
+    _wait_for_kb_doc(client, first["id"])
+    second = client.post(
+        "/api/kb/docs",
+        headers={"X-Nexus-Session": s2},
+        files={"file": ("乙.txt", "香蕉船的航线很远".encode(), "text/plain")},
+    ).json()
+    _wait_for_kb_doc(client, second["id"])
+    shared = client.post(
+        "/api/kb/docs", files={"file": ("全局.txt", "柑橘类的种植手册".encode(), "text/plain")}
+    ).json()
+    _wait_for_kb_doc(client, shared["id"])
+
+    registry = service._build_registry(s1)
+    # 自己的文档查得到
+    assert "甲.txt" in registry.call("search_knowledge_base", {"query": "苹果园"})
+    # 别的会话的文档查不到
+    assert "乙.txt" not in registry.call("search_knowledge_base", {"query": "香蕉船"})
+    # 全局文档对本会话可见
+    assert "全局.txt" in registry.call("search_knowledge_base", {"query": "柑橘类"})
+
+
 def test_knowledge_rejects_unsupported_format(api) -> None:
     client, _service, _config = api
 

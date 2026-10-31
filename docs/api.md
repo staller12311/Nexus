@@ -13,7 +13,7 @@
 | POST | `/api/models/fetch` | `{base_url, api_key}` | `{base_url, models, count}`（一次性只读，Key 不落库） |
 | POST | `/api/sessions/{id}/regenerate?model=` | — | SSE（先删旧回答再重跑，历史不重复） |
 | GET | `/api/kb/status` | — | `{docs, chunks, mode, supported[], max_file_mb, pipeline}` |
-| GET | `/api/kb/docs` | — | `{docs:[{id,name,size,pages,chunk_count,status,mode,error}]}` |
+| GET | `/api/kb/docs` | — | `{docs:[{id,session_id,name,size,pages,chunk_count,status,mode,error}]}` |
 | POST | `/api/kb/docs` | `multipart: file` | `{doc...}`（201；后台解析，status=parsing） |
 | DELETE | `/api/kb/docs/{id}` | — | 被删的文档对象（切片级联删除） |
 | GET | `/api/tools` | — | `{tools:[{name, enabled, default_disabled, description}]}` |
@@ -42,6 +42,15 @@
 运行时也可用 `POST /api/config/workspace` 的 `extras` 覆盖。模型用 `@name/路径` 访问挂载，
 普通相对路径只相对主工作区解析；只读挂载不能写入（第 59 条）。
 
+
+**知识库会话绑定**：`/api/kb/status`、`/api/kb/docs` 和 `POST /api/kb/docs` 支持可选的
+`X-Nexus-Session: <session_id>` 请求头（也兼容 `?session_id=` / 表单 `session_id`）。
+带会话时，上传的文档绑定到该会话，列表和检索只返回「本会话文档 + 旧版全局文档」；
+不带时是全局视角：`GET` 返回**全部**文档，`POST` 落库 `session_id = NULL`。
+
+前端两个入口的约定：输入框左侧 📎 上传**带**该头（会话专属）；左下角全局面板上传与
+列表查询**不带**该头（面板要看全库，每行自己标「本会话 / 全局」）。会话 id 不存在时
+`POST` 返回 404，避免写出孤儿 `session_id`。
 
 ## 图片上传
 
