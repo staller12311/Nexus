@@ -22,6 +22,15 @@
 
 ## 桌面打包
 
+前置：venv 里要有 PyInstaller（它不在 `requirements.txt` 里，属于打包专用依赖）：
+
+```powershell
+.venv\Scripts\python.exe -m pip install pyinstaller
+```
+
+脚本用 `python -m PyInstaller` 调用，所以**不依赖** `Scripts\pyinstaller.exe` 是否存在
+（用 `pip --target` 之类的装法会把启动器放到 `site-packages\bin`）。
+
 ```powershell
 # 默认同时构建 Personal + Distribution
 powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1

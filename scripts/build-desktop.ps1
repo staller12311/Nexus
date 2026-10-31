@@ -34,7 +34,9 @@ $Frontend = Join-Path $RepoRoot 'frontend'
 $Packaging = Join-Path $RepoRoot 'packaging'
 $VenvRoot = Join-Path $RepoRoot '.venv'
 $VenvPython = Join-Path $VenvRoot 'Scripts\python.exe'
-$PyInstaller = Join-Path $VenvRoot 'Scripts\pyinstaller.exe'
+# 用 `python -m PyInstaller` 调用，而不是依赖 Scripts\pyinstaller.exe：
+# 安装方式不同（例如 pip --target）会把启动器放到 site-packages\bin，
+# 那样 exe 不存在但模块可用，脚本不该因此报错。
 $DistBackend = Join-Path $Packaging 'dist\nexus-backend'
 $ResourcesBackend = Join-Path $Frontend 'src-tauri\resources\backend'
 $PythonEmbed = Join-Path $Packaging 'python-embed'
@@ -60,10 +62,12 @@ $variantsToBuild = switch ($Variant) {
 # ---------------------------------------------------------------- 1. backend
 Write-Step '1/4 PyInstaller backend'
 if (-not $SkipBackend) {
-    if (-not (Test-Path $PyInstaller)) {
-        throw "找不到 PyInstaller：$PyInstaller"
+    & $VenvPython -c "import PyInstaller" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        throw ("venv 里没有 PyInstaller。先执行：" + [Environment]::NewLine +
+            "    `"$VenvPython`" -m pip install pyinstaller")
     }
-    & $PyInstaller -y --distpath (Join-Path $Packaging 'dist') --workpath (Join-Path $Packaging 'build') (Join-Path $Packaging 'nexus-backend.spec')
+    & $VenvPython -m PyInstaller -y --distpath (Join-Path $Packaging 'dist') --workpath (Join-Path $Packaging 'build') (Join-Path $Packaging 'nexus-backend.spec')
     if ($LASTEXITCODE -ne 0) { throw "PyInstaller 失败，退出码 $LASTEXITCODE" }
 }
 if (-not (Test-Path (Join-Path $DistBackend 'nexus-backend.exe'))) {
