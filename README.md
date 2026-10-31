@@ -6,6 +6,14 @@
 
 <p><b>支持 1M 上下文、本地知识库与可控代码执行的私有化 Agent 中台</b></p>
 
+<br>
+
+<a href="https://github.com/staller12311/Nexus/releases/latest">
+  <img src="https://img.shields.io/badge/Download-Windows_App-brightgreen?style=for-the-badge&logo=windows" alt="Download Windows App" />
+</a>
+
+<br><br>
+
 [![License](https://img.shields.io/badge/License-Apache_2.0-3b82f6?style=flat-square&logo=apache&logoColor=white)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
