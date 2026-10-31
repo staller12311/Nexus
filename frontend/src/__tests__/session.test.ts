@@ -40,27 +40,32 @@ describe('displayTitle', () => {
 })
 
 describe('formatRelativeTime', () => {
-  const now = new Date('2026-10-27T17:20:00+08:00')
+  // 用「本地时间分量」造夹具，再经 toISOString() 归一。
+  // 直接写 '...T01:08:00+00:00' 之类字面量，只在 UTC+8 的机器上成立——CI runner 是 UTC，
+  // 断言里的墙上时间会整体偏移 8 小时而失败。
+  const at = (y: number, m: number, d: number, h: number, min: number, s = 0) =>
+    new Date(y, m - 1, d, h, min, s).toISOString()
+  const now = new Date(2026, 9, 27, 17, 20) // 2026-10-27 17:20（本地时间）
 
   it('一分钟内显示「刚刚」', () => {
-    expect(formatRelativeTime('2026-10-27T09:19:30+00:00', now)).toBe('刚刚')
+    expect(formatRelativeTime(at(2026, 10, 27, 17, 19, 30), now)).toBe('刚刚')
   })
 
   it('一小时内显示「N 分钟前」', () => {
-    expect(formatRelativeTime('2026-10-27T09:15:00+00:00', now)).toBe('5 分钟前')
+    expect(formatRelativeTime(at(2026, 10, 27, 17, 15), now)).toBe('5 分钟前')
   })
 
   it('今天更早显示「今天 HH:MM」', () => {
-    expect(formatRelativeTime('2026-10-27T01:08:00+00:00', now)).toBe('今天 09:08')
+    expect(formatRelativeTime(at(2026, 10, 27, 9, 8), now)).toBe('今天 09:08')
   })
 
   it('昨天显示「昨天 HH:MM」', () => {
-    expect(formatRelativeTime('2026-10-26T01:08:00+00:00', now)).toBe('昨天 09:08')
+    expect(formatRelativeTime(at(2026, 10, 26, 9, 8), now)).toBe('昨天 09:08')
   })
 
   it('更早显示「MM-DD HH:MM」，跨年带年份', () => {
-    expect(formatRelativeTime('2026-10-20T01:08:00+00:00', now)).toBe('10-20 09:08')
-    expect(formatRelativeTime('2025-12-31T01:08:00+00:00', now)).toBe('2025-12-31')
+    expect(formatRelativeTime(at(2026, 10, 20, 9, 8), now)).toBe('10-20 09:08')
+    expect(formatRelativeTime(at(2025, 12, 31, 9, 8), now)).toBe('2025-12-31')
   })
 
   it('非法时间串返回空字符串，不抛异常', () => {
