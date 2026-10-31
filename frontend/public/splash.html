@@ -53,6 +53,12 @@
         letter-spacing: -2px;
         box-shadow: 0 12px 40px rgba(56, 189, 248, 0.28);
       }
+      .logo img {
+        width: 72%;
+        height: 72%;
+        object-fit: contain;
+        display: block;
+      }
       h1 {
         margin: 0;
         font-size: 22px;
@@ -88,7 +94,7 @@
   </head>
   <body>
     <main class="card" data-tauri-drag-region>
-      <div class="logo">N</div>
+      <div class="logo"><img src="/logo.png" alt="Nexus 智枢 Logo" /></div>
       <h1>Nexus 智枢</h1>
       <p class="slogan">私有化 AI 调度中枢</p>
       <div class="status" id="status">

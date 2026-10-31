@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Box, Plus, Settings } from 'lucide-react'
+import { Plus, Settings } from 'lucide-react'
 import { useChatStore } from '../store/chatStore'
 import { displayTitle, formatRelativeTime } from '../lib/session'
 import { SystemPromptDialog } from './SystemPromptDialog'
@@ -22,9 +22,9 @@ export function Sidebar() {
   return (
     <aside className="hidden w-[268px] shrink-0 flex-col border-r border-gray-200 bg-gray-50 md:flex">
       <div className="flex items-center gap-2.5 px-4 pb-3.5 pt-4">
-        {/* 极简线条 Logo：白底细边框 + 深灰图标，不使用渐变/品牌蓝 */}
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white">
-          <Box className="h-4 w-4 text-gray-900" strokeWidth={1.75} />
+        {/* 品牌 Logo：白底细边框，图形由 assets/logo.png 生成并放在 public 下 */}
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-300 bg-white">
+          <img src="/logo.png" alt="Nexus 智枢 Logo" className="h-5 w-5 object-contain" />
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
