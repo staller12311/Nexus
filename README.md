@@ -1,15 +1,24 @@
 <div align="center">
+<img src="./assets/logo.svg" alt="Nexus Logo" width="100" height="100" />
+<br><br>
 
 <h1>Nexus 智枢</h1>
-
 <h3>把大模型变成真正的生产力工具</h3>
-
 <p><b>支持 1M 上下文、本地知识库与可控代码执行的私有化 Agent 中台</b></p>
+<br>
+<a href="https://github.com/staller12311/Nexus/releases/latest">
+  <img src="https://img.shields.io/badge/Download-Windows_App-brightgreen?style=for-the-badge&logo=windows" alt="Download Windows App" />
+</a>
+<a href="#快速开始">
+  <img src="https://img.shields.io/badge/Deploy-Docker-blue?style=for-the-badge&logo=docker" alt="Docker Deploy" />
+</a>
+
+<br><br>
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-3b82f6?style=flat-square&logo=apache&logoColor=white)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app/)
 
 </div>
 
