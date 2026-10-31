@@ -90,11 +90,16 @@ class SearchHit:
 
 
 # ---------------------------------------------------------------- 解析
-def _require(module: str, hint: str):
+def _require(module: str, hint: str, *, display_name: str | None = None):
+    """按真实 import 名导入可选依赖；``display_name`` 用于给用户看的 pip 包名。
+
+    注意 python-docx 的 import 名是 ``docx``，不是 ``python-docx``。
+    """
     try:
         return __import__(module)
     except ImportError as exc:  # pragma: no cover - 取决于是否装了库
-        raise KnowledgeError(f"缺少依赖 {module}，请先安装：{hint}") from exc
+        name = display_name or module
+        raise KnowledgeError(f"缺少依赖 {name}，请先安装：{hint}") from exc
 
 
 def parse_pdf(data: bytes) -> list[tuple[int, str]]:
@@ -116,7 +121,7 @@ def parse_pdf(data: bytes) -> list[tuple[int, str]]:
 
 def parse_docx(data: bytes) -> list[tuple[int, str]]:
     """Word 没有页的概念，用「段落序号」当页码。"""
-    docx = _require("python-docx", "pip install python-docx")
+    docx = _require("docx", "pip install python-docx", display_name="python-docx")
     import io
 
     document = docx.Document(io.BytesIO(data))
