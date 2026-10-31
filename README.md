@@ -240,6 +240,11 @@ python -m venv .venv
 
 桌面版用 Tauri v2 封装前端，并内置一个 PyInstaller onedir 后端；安装后不需要单独启动 Python 或浏览器。
 
+**直接下载（推荐）**：不想自己构建的话，从
+[最新 Release](https://github.com/staller12311/Nexus/releases/latest) 下载
+`Nexus 智枢_x.y.z_x64-distribution-setup.exe`（约 28 MB），双击安装即可。
+安装包未做代码签名，SmartScreen 提示选「更多信息 → 仍要运行」。
+
 **两种安装包**
 
 构建会在同一目录生成两个安装器：
@@ -269,7 +274,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1 -Variant Pe
 powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1 -Variant Distribution
 ```
 
-构建前置条件：Node.js + npm、Rust + MSVC（`rustup`）、WebView2 Runtime（Windows 11 自带）。
+构建前置条件：Node.js + npm、Rust + MSVC（`rustup`）、WebView2 Runtime（Windows 11 自带），
+以及 venv 里装好 PyInstaller（它属于打包专用依赖，不在 `requirements.txt` 里）：
+
+```powershell
+.venv\Scripts\python.exe -m pip install pyinstaller
+```
+
 Personal 安装包包含本机 `.env` 和 `.venv`，**只能自己用，不要外发**；如需分享，请构建 Distribution。
 个人版 venv 的 `pyvenv.cfg` 指向本机 `D:\python3.11`，因此 Personal 版依赖同一台机器的 Python 安装；分发版不依赖系统 Python。
 
