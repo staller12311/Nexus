@@ -2,6 +2,21 @@
 
 > 返回 [README](../README.md)
 
+## 持续集成
+
+`.github/workflows/ci.yml` 在每次 push 到 `main` 和每个 PR 上跑两条 job（都在 `windows-latest`，
+因为 `tests/test_tools_security.py` 依赖 Windows 路径与目录联接）：
+
+| Job | 内容 |
+|---|---|
+| Backend (pytest) | Python 3.11 + `pip install -r requirements.txt` + `python -m pytest -q` |
+| Frontend | Node 22 + `npm ci` + `npx tsc --noEmit` + `npm run test` |
+
+两个注意点：
+
+- 前端 `.npmrc` 里写的是本机绝对缓存路径，CI 用 `npm ci --cache .npm-cache` 覆盖
+- 本地复现同一条流水线：`python -m pytest -q`，以及 `cd frontend && npx tsc --noEmit && npm run test`
+
 ## 测试
 
 ```bash

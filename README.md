@@ -15,6 +15,7 @@
 
 <br><br>
 
+[![CI](https://github.com/staller12311/Nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/staller12311/Nexus/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-3b82f6?style=flat-square&logo=apache&logoColor=white)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)

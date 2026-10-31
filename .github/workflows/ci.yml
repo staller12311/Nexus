@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支连续推送时取消上一次，避免排队浪费额度
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (pytest)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      # 必须用 python -m pytest：测试按包名导入 agent.*，需要仓库根目录在 sys.path 上
+      - name: Run tests
+        run: python -m pytest -q
+
+  frontend:
+    name: Frontend (typecheck + vitest)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # frontend/.npmrc 里写着本机的绝对缓存路径（D:\MyAi\.npm-cache），
+      # CI 上用 --cache 覆盖掉，否则 npm 会在一个不存在的盘符下建缓存。
+      - name: Install dependencies
+        run: npm ci --cache .npm-cache --no-audit --no-fund
+
+      - name: Typecheck (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm run test
