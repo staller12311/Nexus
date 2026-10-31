@@ -67,6 +67,40 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1 -SkipInstal
 - 首次启动可能被 Defender 扫描拖慢，端口等待上限为 45 秒；启动失败日志在 `%LOCALAPPDATA%\Nexus\logs\desktop.log`。
 - 不要把 `cargo build --release` 直接产出的 exe 复制到安装目录：Tauri CLI 的 `tauri build` 才会嵌入前端资源；直接 cargo 构建会走 `devUrl`，表现为 "无法访问网页"。
 
+### 构建链路已知坑
+
+这条链路（前端构建 → PyInstaller → Tauri → NSIS）环节多、每节都可能单独失败，先看这里再排查：
+
+1. **`找不到 PyInstaller：.venv\Scripts\pyinstaller.exe`**
+   PyInstaller 不是运行时依赖，`requirements.txt` 里没有。先
+   `.venv\Scripts\python.exe -m pip install pyinstaller`。
+   （脚本已改用 `python -m PyInstaller` 调用，不依赖那个启动器 exe 是否存在。）
+
+2. **改了后端依赖后桌面版才报"不支持的文件类型"**
+   PyInstaller 靠 `packaging/nexus-backend.spec` 的 `hiddenimports` 静态分析，
+   新增解析器/可选依赖必须同步加进去（`docx` / `pypdf` / `lxml` 就是这么加上的），
+   否则源码跑得好、装完就缺包。
+
+3. **安装时报 `Error opening file for writing: ...\nexus-desktop.exe`**
+   NSIS 用独占方式打开目标 exe，**任何瞬时占用都会失败**（应用没真正退出最常见，
+   关窗口 ≠ 退出，`nexus-backend.exe` 常常还在跑）；杀软拦截 setup 覆盖 exe 也会如此。
+   排查：`tasklist` 看两个进程是否退出 → 试着重命名该 exe（能改名说明没有锁）。
+   反复失败就别原地重装，改为**手工替换**：旧文件改名留档 → 从
+   `frontend/src-tauri/target/release/nexus-desktop.exe` 与
+   `frontend/src-tauri/resources/backend/` 复制进安装目录。数据在
+   `%APPDATA%\com.stellar.nexus`，与安装目录分离，不会受影响。
+   注意：只删安装目录而**不清卸载注册表项**，新安装包仍会弹「已安装」，
+   且它要调用的 `uninstall.exe` 已不存在 → 死循环。
+
+4. **想跳过 `npm run build` 里的 tsc**
+   `tauri build --no-bundle --config <覆盖文件>`，覆盖文件写
+   `{"build":{"beforeBuildCommand":""}}`，前端 dist 用 vite 单独产出。
+
+5. **怎么确认装进去的是不是新前端**
+   Tauri 会把 `dist/assets/index-<hash>.js` 的文件名写进 exe，直接对该 exe 扫字节：
+   `data.count(b'index-B2FKVPPZ')` 命中即说明内嵌的是这一版。
+   对裸 exe 有效；NSIS 安装包是 LZMA 压缩，扫不到属正常。
+
 ## 交付清单
 
 验收标准第 7 条要求 README 覆盖安装、配置、用法与扩展方式，逐项对照：
