@@ -38,6 +38,8 @@ class FakeXHR {
   onload: (() => void) | null = null
   onerror: (() => void) | null = null
   sent: FormData | null = null
+  /** 记录 setRequestHeader，用来断言上传是否带上了会话头 */
+  headers: Record<string, string> = {}
 
   constructor() {
     FakeXHR.instances.push(this)
@@ -45,6 +47,9 @@ class FakeXHR {
   open(method: string, url: string) {
     this.method = method
     this.url = url
+  }
+  setRequestHeader(name: string, value: string) {
+    this.headers[name] = value
   }
   send(body: FormData) {
     this.sent = body
@@ -81,6 +86,20 @@ function stubFetch(docsAfterUpload: KnowledgeDoc[]) {
         // 上传完成后立刻能在列表里看到（模拟后端已落库）
         docs = docsAfterUpload
         return jsonResponse({ docs })
+      }
+      if (url.endsWith('/api/sessions')) {
+        return jsonResponse(
+          {
+            id: 's-auto',
+            title: '',
+            model: 'deepseek',
+            created_at: '2026-11-01T00:00:00Z',
+            updated_at: '2026-11-01T00:00:00Z',
+            message_count: 0,
+            total_tokens: 0,
+          },
+          201,
+        )
       }
       return jsonResponse({ sessions: [] })
     }),
@@ -141,6 +160,26 @@ describe('输入框上传文档（回形针 + 聊天卡片）', () => {
 
     await waitFor(() => expect(screen.getByLabelText('上传文档到知识库')).toBeInTheDocument())
     expect(screen.queryByTestId('kb-global-hint')).not.toBeInTheDocument()
+  })
+
+  it('没有会话时上传：先自动建会话，上传请求带上 X-Nexus-Session', async () => {
+    stubFetch([kbDoc('会话纪要.docx')])
+    const user = userEvent.setup()
+    renderComposer()
+    // 前置：确实处于「没有会话」的状态
+    expect(useChatStore.getState().sessionId).toBeNull()
+
+    await user.upload(
+      screen.getByLabelText('选择要上传的文档'),
+      new File(['x'], '会话纪要.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+    )
+
+    await waitFor(() => expect(FakeXHR.instances.length).toBeGreaterThan(0))
+    // 关键断言：请求头带上了刚建出来的会话，文档才会落成「会话专属」而不是全局
+    expect(FakeXHR.instances[0].headers['X-Nexus-Session']).toBe('s-auto')
+    expect(useChatStore.getState().sessionId).toBe('s-auto')
   })
 
   it('选中文件后：立刻出现「正在上传文档 xxx」卡片，并带进度条', async () => {

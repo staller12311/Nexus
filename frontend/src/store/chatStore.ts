@@ -507,7 +507,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   uploadKbDocs: async (files) => {
     if (files.length === 0) return
-    const sessionId = get().sessionId
+    let sessionId = get().sessionId
+    // 没有会话时用 📎 上传：先建一个会话再挂文档。
+    // 否则请求不带 X-Nexus-Session，后端只能按「全局」入库，
+    // 用户就会看到「传了但会话里没有这份文档」。
+    if (!sessionId) {
+      try {
+        const created = await api.createSession(get().model ?? undefined)
+        sessionId = created.id
+        set({ sessionId })
+        void get().refreshSessions()
+      } catch {
+        // 建会话失败不阻塞上传：退回全局文档，至少文件不会丢
+      }
+    }
     const cards: UploadCard[] = files.map((file, index) => ({
       id: `kb-${Date.now()}-${index}`,
       name: file.name,

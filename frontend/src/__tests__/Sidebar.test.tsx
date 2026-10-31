@@ -159,6 +159,8 @@ describe('侧边栏会话管理', () => {
     ])
     render(<Sidebar />)
     expect(screen.getByText(/5 分钟前 · 5 条 · 36 tokens/)).toBeInTheDocument()
-    expect(screen.getByText(/之前|今天/)).toBeInTheDocument()
+    // 3 小时前在凌晨 0–3 点会跨天，渲染成「昨天 HH:MM」，所以三种相对时间都要接受。
+    // （formatRelativeTime 自身各分支的精确断言见 session.test.ts，用的是固定 now。）
+    expect(screen.getByText(/之前|今天|昨天/)).toBeInTheDocument()
   })
 })
