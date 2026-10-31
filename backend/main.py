@@ -26,7 +26,7 @@ OPTIONAL_DEPENDENCIES = (("docx", "python-docx"), ("pypdf", "pypdf"))
 
 app = FastAPI(
     title="LLM Agent Web API",
-    version="1.1.0",
+    version="1.2.0",
     description=(
         "把本地 CLI 智能体包装成 HTTP 接口。所有智能体逻辑复用 `agent` 包，"
         "本服务只负责调用与传事件。"

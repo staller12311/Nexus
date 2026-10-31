@@ -36,8 +36,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1 -SkipInstal
 
 两个安装包：
 
-- `Nexus 智枢_1.1.0_x64-personal-setup.exe`：包含本机 `.env`、`config.yaml` 和完整 `.venv`，`run_python_code` 使用 venv；只供自己用。
-- `Nexus 智枢_1.1.0_x64-distribution-setup.exe`：使用 `config.example.yaml` + 空 `.env` 模板 + 便携 Python，不含 venv，适合分发。
+- `Nexus 智枢_1.2.0_x64-personal-setup.exe`：包含本机 `.env`、`config.yaml` 和完整 `.venv`，`run_python_code` 使用 venv；只供自己用。
+- `Nexus 智枢_1.2.0_x64-distribution-setup.exe`：使用 `config.example.yaml` + 空 `.env` 模板 + 便携 Python，不含 venv，适合分发。
 
 产物：
 
@@ -47,6 +47,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1 -SkipInstal
 
 注意：
 
+- **版本号只有一个来源**：`frontend/src-tauri/tauri.conf.json`。`scripts/build-desktop.ps1`
+  会读它拼安装包文件名，`frontend/package.json`、`Cargo.toml`、`agent/__init__.py`、
+  `backend/main.py` 里的版本要一起改（升级版本时容易漏，见「已知待办」）。
 - `packaging/python-embed/` 是便携 Python，首次构建会自动下载；不要提交进 Git。
 - Personal 包含本机 venv 与真实密钥，**绝不能外发**；需要分享时构建 Distribution。
 - Personal 的 venv 路径绑定本机 `D:\python3.11`；换机器请用 Distribution，或重新创建 venv 后打包。
@@ -95,6 +98,8 @@ Web 界面（第一阶段 CLI 之外的增量交付）：
   并回灌错误，彻底避免上游 400 与无脑重试（第 67 条）
 - [x] **上下文记忆管理**：大代码 tool_call 历史压缩 + 1M 窗口识别 + 超 80% 用后台摘要
   替换最旧 10 条消息（第 68 条）
+- [x] **会话专属知识库**：面板上传落全局、输入框 📎 上传绑定当前会话；检索只覆盖
+  「本会话 + 全局」；system prompt 分段列出两类文档，模糊提问不再反问（第 72 条）
 
 ---
 

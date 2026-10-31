@@ -39,6 +39,9 @@ $DistBackend = Join-Path $Packaging 'dist\nexus-backend'
 $ResourcesBackend = Join-Path $Frontend 'src-tauri\resources\backend'
 $PythonEmbed = Join-Path $Packaging 'python-embed'
 $InstallerDir = Join-Path $Frontend 'src-tauri\target\release\bundle\nsis'
+# 版本号单一来源：tauri.conf.json。以前这里硬编码，升版本时容易漏改，
+# 导致脚本去找一个不存在的旧文件名。
+$AppVersion = (Get-Content (Join-Path $Frontend 'src-tauri\tauri.conf.json') -Raw | ConvertFrom-Json).version
 
 function Write-Step([string]$Text) {
     Write-Host ""
@@ -141,14 +144,14 @@ function Build-Variant([string]$Kind) {
         Pop-Location
     }
 
-    $rawPath = Join-Path $InstallerDir 'Nexus 智枢_1.1.0_x64-setup.exe'
+    $rawPath = Join-Path $InstallerDir "Nexus 智枢_${AppVersion}_x64-setup.exe"
     if (-not (Test-Path $rawPath)) {
         $raw = Get-ChildItem $InstallerDir -Filter '*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if (-not $raw) { throw "找不到 NSIS 输出：$InstallerDir" }
         $rawPath = $raw.FullName
     }
     $suffix = if ($Kind -eq 'Personal') { 'personal' } else { 'distribution' }
-    $target = Join-Path $InstallerDir ("Nexus 智枢_1.1.0_x64-" + $suffix + '-setup.exe')
+    $target = Join-Path $InstallerDir ("Nexus 智枢_" + $AppVersion + "_x64-" + $suffix + '-setup.exe')
     Copy-Item -LiteralPath $rawPath -Destination $target -Force
     $sizeMb = [math]::Round((Get-Item -LiteralPath $target).Length / 1048576, 1)
     Write-Host ("$Kind installer: $target  ($sizeMb MB)") -ForegroundColor Green
