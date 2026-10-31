@@ -790,6 +790,15 @@ class AgentService:
                         yield {"type": "reasoning_delta", "text": event.get("text") or ""}
                     elif kind == "text":
                         yield {"type": "text_delta", "delta": event.get("text") or ""}
+                    elif kind == "summary_notice":
+                        yield {
+                            "type": "notice",
+                            "content": event.get("content") or "",
+                            "summary": event.get("summary") or "",
+                            "total_summary": event.get("total_summary") or "",
+                            "rounds": event.get("rounds") or 0,
+                            "messages": event.get("messages") or 0,
+                        }
                     elif kind == "notice":
                         yield {"type": "text_delta", "delta": event.get("text") or ""}
                     elif kind == "done":

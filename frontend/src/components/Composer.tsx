@@ -12,7 +12,8 @@ import type { Attachment } from '../types'
 
 /** 沙箱说明文案（徽章 + Tooltip 共用，也是测试断言的目标） */
 const SANDBOX_HINT =
-  '为保护您的数据安全，AI 文件读写工具已被严格限制在当前的 workspace 目录内，无法越权访问系统文件。'
+  'AI 文件读写工具被严格限制在当前 workspace 内，无法越权访问系统文件。' +
+  '注意：run_python_code 是进程级轻量沙箱，不是 OS 隔离；run_shell 的审批也只是人工确认，不构成安全隔离。'
 
 /** textarea 自适应高度的上限，与 class 里的 max-h-48（12rem/192px）保持一致 */
 const TEXTAREA_MAX_HEIGHT = 192
@@ -156,7 +157,7 @@ export function Composer() {
   }
 
   const sandboxTitle = workspace
-    ? `安全沙箱保护中：${workspace}。${SANDBOX_HINT}点击切换工作区。`
+    ? `工作区沙箱保护中：${workspace}。${SANDBOX_HINT}点击切换工作区。`
     : `${SANDBOX_HINT}点击切换工作区。`
 
   // 节省金额与命中率都来自后端（分母只有 prompt tokens）；数据缺失时给「暂无数据」
@@ -257,11 +258,11 @@ export function Composer() {
                 data-testid="sandbox-badge"
                 onClick={() => setWorkspaceOpen(true)}
                 title={sandboxTitle}
-                aria-label={`安全沙箱保护中${workspace ? `：${workspace}` : ''}。点击切换工作区。${SANDBOX_HINT}`}
+                aria-label={`工作区沙箱保护中${workspace ? `：${workspace}` : ''}。点击切换工作区。${SANDBOX_HINT}`}
                 className="group relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-emerald-600 transition-colors hover:bg-emerald-50"
               >
                 <ShieldCheck className="h-4 w-4" />
-                <span className="sr-only">安全沙箱保护中</span>
+                <span className="sr-only">工作区沙箱保护中</span>
                 {workspace && (
                   <span
                     aria-hidden="true"
@@ -273,7 +274,7 @@ export function Composer() {
                   className="pointer-events-none absolute bottom-full left-0 z-20 mb-2 w-64 rounded-lg bg-slate-900/95 px-2.5 py-1.5 text-[11px] font-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
                 >
                   <span className="block font-medium">
-                    安全沙箱保护中{workspace ? `：${workspace}` : ''}
+                    工作区沙箱保护中{workspace ? `：${workspace}` : ''}
                   </span>
                   <span className="mt-0.5 block text-slate-300">{SANDBOX_HINT}</span>
                 </span>

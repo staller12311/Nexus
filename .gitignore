@@ -45,3 +45,15 @@ tools/__pycache__/
 
 # 本地协作工具的内部记忆文件（不公开）
 .workbuddy/
+
+# Tauri dev WebView2 profile (debug only)
+.webview/
+
+# Desktop build artifacts
+packaging/build/
+packaging/dist/
+packaging/python-embed/
+packaging/smoke-data/
+frontend/src-tauri/resources/backend/*
+!frontend/src-tauri/resources/backend/.gitkeep
+!frontend/src-tauri/resources/backend/README.md

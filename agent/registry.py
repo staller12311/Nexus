@@ -27,11 +27,13 @@ from .tools import (
     ToolError,
     Workspace,
     get_time,
+    git_status,
     http_get,
     list_dir,
     read_file,
     run_python_code,
     run_shell,
+    search_code,
     write_file,
 )
 from .tools.python_exec import TEMP_DIR_NAME
@@ -399,11 +401,46 @@ def build_registry(config: AppConfig, logger: logging.Logger | None = None) -> T
             ),
             handler=partial(list_dir, workspace),
         ),
+        "search_code": lambda: ToolSpec(
+            name="search_code",
+            description=(
+                "在 workspace 内按行搜索关键字，返回「相对路径:行号: 命中内容」。"
+                "只读；支持用 file_extension 过滤扩展名（例如 py 或 .py），省略则搜索全部文本文件。"
+                "默认大小写不敏感；自动跳过 .git/.venv/node_modules 和二进制文件。"
+            ),
+            parameters=_object_schema(
+                {
+                    "keyword": {
+                        "type": "string",
+                        "description": "要搜索的关键字（1–200 字符，不能包含换行）",
+                    },
+                    "file_extension": {
+                        "type": "string",
+                        "description": "可选扩展名过滤，例如 py、.ts；省略表示所有文本文件",
+                    },
+                },
+                ["keyword"],
+            ),
+            handler=partial(search_code, workspace),
+        ),
+        "git_status": lambda: ToolSpec(
+            name="git_status",
+            description=(
+                "在 workspace 内执行只读的 `git status --short`，返回有改动的文件列表。"
+                "不接受参数；非 Git 仓库或未安装 git 时返回可读错误。"
+            ),
+            parameters=_object_schema({}, []),
+            handler=partial(git_status, workspace),
+        ),
         "run_shell": lambda: ToolSpec(
             name="run_shell",
             description=(
                 "在 workspace 目录下执行一条白名单内的命令（shell=False，不经过 shell，"
                 "不支持管道与重定向）。白名单为空时任何命令都会被拒绝。"
+                if not config.tools.allow_unsafe_shell
+                else "在 workspace 目录下执行**任意 Shell 命令**：allow_unsafe_shell=true，"
+                "使用 shell=True 并绕过白名单；每次调用都强制进入人工审批。"
+                "这不是 OS 隔离，审批只代表人工确认，请勿把它当作安全边界。"
             ),
             parameters=_object_schema(
                 {
@@ -418,13 +455,15 @@ def build_registry(config: AppConfig, logger: logging.Logger | None = None) -> T
                 run_shell,
                 workspace.root,
                 allowed_commands=config.tools.run_shell.allowed_commands,
+                allow_unsafe_shell=config.tools.allow_unsafe_shell,
             ),
         ),
         "run_python_code": lambda: ToolSpec(
             name="run_python_code",
             description=(
                 "在 workspace 内执行一段任意 Python 代码并返回其输出。"
-                "**这不是 OS 级隔离**：代码以当前后端进程的权限运行，能读写该权限触达的文件、"
+                "**这是进程级轻量沙箱，不是 OS 隔离**：代码以当前后端进程的权限运行，"
+                "能读写该权限触达的文件、"
                 "访问网络，请只在用户明确要求时使用，并如实说明潜在副作用。"
                 f"代码会写到主工作区 {TEMP_DIR_NAME}/ 下的临时文件后执行、用完即删；"
                 "子进程工作目录固定为工作区根；"

@@ -12,6 +12,7 @@ import type {
   KnowledgeStatus,
   ModelInfo,
   SessionInfo,
+  SummaryNotice,
   ToolCallStatus,
   Usage,
   UsageStats,
@@ -64,6 +65,13 @@ function applyEvent(
       break
     case 'reasoning_delta':
       get().appendReasoning(asString(event.text))
+      break
+    case 'notice':
+      get().addSummaryNotice(
+        asString(event.content),
+        asString(event.summary),
+        asNumber(event.rounds),
+      )
       break
     case 'message_end':
       get().finishMessage(parseUsage(event.usage))
@@ -120,6 +128,8 @@ type ChatState = {
   sessions: SessionInfo[]
   sessionId: string | null
   messages: ChatMessage[]
+  /** 上下文摘要提示：只存在于当前聊天流，刷新/切会话后清空 */
+  summaryNotices: SummaryNotice[]
   streaming: boolean
   error: string | null
   notice: string | null
@@ -169,6 +179,8 @@ type ChatState = {
   setError: (error: string | null) => void
   clearNotice: () => void
   setNotice: (notice: string | null) => void
+  /** SSE notice：记录摘要压缩提示，供聊天流展示 */
+  addSummaryNotice: (content: string, summary: string, rounds: number) => void
 
   /** 新建会话：POST /api/sessions → 清空主区 → 刷新列表（并高亮新会话） */
   startNewSession: () => Promise<void>
@@ -221,6 +233,7 @@ const initialState = {
   sessions: [] as SessionInfo[],
   sessionId: null as string | null,
   messages: [] as ChatMessage[],
+  summaryNotices: [] as SummaryNotice[],
   streaming: false,
   error: null as string | null,
   notice: null as string | null,
@@ -308,6 +321,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({
         sessionId: created.id,
         messages: [],
+        summaryNotices: [],
         streaming: false,
         error: null,
         draft: '',
@@ -338,6 +352,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         sessionId: detail.session.id,
         model: modelName,
         messages,
+        summaryNotices: [],
         streaming: false,
         error: null,
         systemPrompt: detail.system_prompt ?? '',
@@ -672,6 +687,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     set({ ...initialState })
   },
+
+  addSummaryNotice: (content, summary, rounds) =>
+    set((state) => ({
+      summaryNotices: [
+        ...state.summaryNotices,
+        {
+          id: nextId(),
+          content,
+          summary,
+          rounds: Number.isFinite(rounds) ? rounds : 0,
+        },
+      ],
+    })),
 
   beginMessage: () =>
     set((state) => {

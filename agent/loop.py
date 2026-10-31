@@ -141,6 +141,13 @@ def trim_history(
     return result
 
 
+def _approval_tool_names(config: AppConfig) -> tuple[str, ...]:
+    names = set(config.tools.approval_required) if config.tools.require_approval else set()
+    if config.tools.allow_unsafe_shell:
+        names.add("run_shell")
+    return tuple(sorted(names))
+
+
 class AgentLoop:
     """把 provider、工具注册表、持久化串起来的多轮循环。"""
 
@@ -238,10 +245,9 @@ class AgentLoop:
             on_tool_call=on_tool_call,
             on_tool_result=on_tool_result,
             approval_handler=approval_handler,
-            # 只有 require_approval 打开时才让 loop 认识「需要审批」的工具
-            approval_required=(
-                config.tools.approval_required if config.tools.require_approval else ()
-            ),
+            # 只有 require_approval 打开时才让 loop 认识「需要审批」的工具；
+            # allow_unsafe_shell 是独立危险开关，即使全局审批被改回 false 也强制审批 run_shell。
+            approval_required=_approval_tool_names(config),
             context_window=context_window,
             summarizer=summarizer,
             context_summary_trigger=config.agent.context_summary_trigger,
@@ -305,6 +311,7 @@ class AgentLoop:
         - ``{"type": "reasoning", "text": ...}`` 思维链增量
         - ``{"type": "text", "text": ...}`` 正文增量
         - ``{"type": "notice", "text": ...}`` 工具轮次上限提示（同时也会进 content）
+        - ``{"type": "summary_notice", ...}`` 上下文摘要压缩成功（供 SSE 通知前端）
         - ``{"type": "done", "result": LoopResult, "reasoning": str | None}``
         """
         text = (user_input or "").strip()
@@ -338,7 +345,9 @@ class AgentLoop:
                 return
 
             # 上下文超过阈值时：用「摘要」替换最旧的若干轮，而不是直接砍掉
-            self._maybe_summarize_history()
+            summary_notice = self._maybe_summarize_history()
+            if summary_notice is not None:
+                yield summary_notice
             tools = self.registry.schemas() or None
             content_parts: list[str] = []
             reasoning_parts: list[str] = []
@@ -569,24 +578,24 @@ class AgentLoop:
         # 中英文混合按 2.5 字符/token 保守估算
         return int(chars / 2.5)
 
-    def _maybe_summarize_history(self) -> None:
+    def _maybe_summarize_history(self) -> dict[str, Any] | None:
         """上下文达到窗口的 ``trigger`` 比例时，把最旧的若干轮压缩成一条摘要。
 
         摘要写入 system 提示词（保持 OpenAI 消息序列合法），原消息从内存历史移除；
         DB 里的完整历史不动（前端回放仍是全文）。摘要失败时静默跳过，下一轮再试。
         """
         if self.context_window is None or self.summarizer is None:
-            return
+            return None
         self._summary_failed = False
         estimated = self._estimate_context_tokens()
         if estimated < self.context_window * self.context_summary_trigger:
-            return
+            return None
 
         pinned, groups = _split_groups(self._messages)
         # 至少给最近两轮留位置；最多压缩 context_summary_messages 条
         removable = max(0, len(groups) - 2)
         if removable <= 0:
-            return
+            return None
         take = min(self.context_summary_messages, removable)
         removed_groups = groups[:take]
         removed = [message for group in removed_groups for message in group]
@@ -597,11 +606,11 @@ class AgentLoop:
         except Exception as exc:  # noqa: BLE001 - 摘要失败不能让主对话崩溃
             self._summary_failed = True
             self._logger.warning("历史摘要失败，本轮退回按条数裁剪：%s", exc)
-            return
+            return None
         summary = (summary or "").strip()
         if not summary:
             self._summary_failed = True
-            return
+            return None
 
         self._history_summary = (
             f"{self._history_summary}；{summary}" if self._history_summary else summary
@@ -627,6 +636,17 @@ class AgentLoop:
             len(removed),
             len(self._messages),
         )
+        removed_user_turns = sum(1 for message in removed if message.get("role") == "user")
+        rounds = removed_user_turns or len(removed_groups)
+        content = f"为节省上下文，已自动压缩前 {rounds} 轮对话。"
+        return {
+            "type": "summary_notice",
+            "content": content,
+            "summary": summary,
+            "total_summary": self._history_summary,
+            "rounds": rounds,
+            "messages": len(removed),
+        }
 
     @staticmethod
     def _format_history_for_summary(messages: Sequence[Mapping[str, Any]]) -> str:

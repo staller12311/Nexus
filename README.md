@@ -4,7 +4,7 @@
 
 <h3>把大模型变成真正的生产力工具</h3>
 
-<p><b>支持 1M 上下文、本地知识库与代码沙箱的私有化 Agent 中台</b></p>
+<p><b>支持 1M 上下文、本地知识库与可控代码执行的私有化 Agent 中台</b></p>
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-3b82f6?style=flat-square&logo=apache&logoColor=white)](./LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
@@ -25,7 +25,7 @@
 
 - **本地代码重构**：通过多根挂载（`@libs`），让 AI 安全地读取依赖库，并帮你重构整个项目。
 - **私有知识库问答**：上传 PDF/Word 财报，知识库与检索留在本地，AI 精准检索并给出结论（支持 1M 超长上下文）。
-- **安全执行沙箱**：让 AI 现场写 Python 代码并运行（如处理 Excel 数据），全程在 workspace 沙箱内执行，高危操作需人工点击确认。
+- **本地执行与安全边界**：文件工具限定在 workspace；`run_python_code` 是**进程级轻量沙箱，不是 OS 隔离**；`run_shell` 默认只允许白名单裸命令，开启 `allow_unsafe_shell` 后强制人工审批。
 
 ## 竞品对比（为什么选我们？）
 
@@ -127,8 +127,9 @@ sequenceDiagram
 - **自研 Agent Loop**：推理/正文双通道流式解析，`tool_calls` 碎片按 index 拼装，不依赖任何 Agent 框架
 - **多模型热插拔**：任意 OpenAI 兼容端点（DeepSeek / 千问 / Moonshot / 智谱 / Ollama / vLLM），一个 YAML 搞定
 - **多模态 Vision**：上传图片自动压缩（长边 ≤2048px、JPEG 0.8、≤1MB），后端转 OpenAI Vision 数组；历史图片落盘 `data/uploads`，不把 base64 写进数据库
-- **真·流式 Web 体验**：SSE 打字机、思考链折叠、工具卡实时状态、React 19 + Zustand
-- **企业级安全沙箱**：workspace realpath 越界校验、`@mount` 只读挂载、命令/域名白名单、危险工具审批闸门
+- **真·流式 Web 体验**：SSE 打字机、思考链折叠、工具卡实时状态、上下文摘要通知，React 19 + Zustand
+- **代码搜索与 Git 感知**：`search_code` 在 workspace 内按关键字 + 扩展名检索，`git_status` 只读返回 `git status --short`，不用模型猜文件
+- **分级安全边界**：workspace realpath 越界校验、`@mount` 只读挂载、命令/域名白名单、危险工具审批闸门；代码执行不是 OS 隔离，详见下方安全提示
 - **长上下文记忆**：1M 窗口校准 + 大参数历史压缩 + 80% 自动摘要（不再粗暴砍历史）
 - **协议级健壮性**：非法 `function.arguments` 本地拦截、工具异常回灌、上游 400 防御
 - **可观测与成本**：Token/缓存命中率/节省估算、结构化日志与密钥脱敏、会话级统计
@@ -139,7 +140,7 @@ sequenceDiagram
 <p align="center"><a href="./assets/ui-chat.png"><img src="./assets/ui-chat.png" alt="Nexus 智枢 对话界面：流式回答、思考链与工具调用卡" width="100%" /></a></p>
 
 <details>
-<summary><b>审批卡片与代码沙箱（点击展开）</b></summary>
+<summary><b>审批卡片与代码执行边界（点击展开）</b></summary>
 
 <p align="center"><a href="./assets/ui-approval.png"><img src="./assets/ui-approval.png" alt="Nexus 智枢 审批卡片：write_file 只读代码预览、同意 / 拒绝" width="100%" /></a></p>
 
@@ -168,7 +169,7 @@ nexus-zhishu/
 ├── assets/                   # README 截图（ui-chat / ui-approval）
 ├── docs/                     # 深度文档
 │   ├── whitepaper.md         # 技术白皮书
-│   ├── design-decisions.md   # 68 条设计决策
+│   ├── design-decisions.md   # 71 条设计决策
 │   ├── api.md                # REST / SSE / 图片上传协议
 │   ├── models.md             # 模型接入（含视觉模型）
 │   ├── cli.md                # 命令行用法
@@ -208,6 +209,11 @@ docker compose up -d          # 首次构建约 3–5 分钟
 > 如果 workspace 会处理他人代码或不可信输入，请把 `tools.require_approval` 改为 `true`，
 > 危险工具（`run_python_code` / `delete_path` / `run_shell`）将重新走人工审批。
 
+> **安全边界（诚实版）**：`run_python_code` 是**进程级轻量沙箱，不是 OS 隔离**——代码以当前后端
+> 进程权限运行，能读写该权限触达的文件、访问网络。`tools.allow_unsafe_shell=true` 会让
+> `run_shell` 使用 `shell=True` 并绕过命令白名单，且强制每次人工审批；审批只代表人工确认，
+> 不能替代 OS 账户、虚拟机或容器隔离。
+
 ## 手动安装（开发模式）
 
 适合想改代码 / 跑测试的开发者。
@@ -219,6 +225,57 @@ python -m venv .venv
 ```
 
 要求 Python 3.11+。
+
+## Windows 桌面版
+
+桌面版用 Tauri v2 封装前端，并内置一个 PyInstaller onedir 后端；安装后不需要单独启动 Python 或浏览器。
+
+**两种安装包**
+
+构建会在同一目录生成两个安装器：
+
+```text
+frontend/src-tauri/target/release/bundle/nsis/
+├── Nexus 智枢_1.1.0_x64-personal-setup.exe       # 约 51 MB，自用
+└── Nexus 智枢_1.1.0_x64-distribution-setup.exe   # 约 32 MB，分发
+```
+
+| | Personal（自用） | Distribution（分发） |
+|---|---|---|
+| `.env` 真实密钥 | 包含 | 不包含（只有空模板） |
+| `config.yaml` | 当前本机配置 | `config.example.yaml` 默认配置 |
+| `.venv` | **完整包含** | 不包含 |
+| `run_python_code` | 使用随包 venv，可 import 本机已装依赖 | 使用便携 Python，仅标准库 |
+| 适用场景 | 自己的电脑，开箱即用 | 给他人/公开分发 |
+
+**构建**
+
+```powershell
+# 在仓库根目录执行；默认同时构建 Personal + Distribution
+powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1
+
+# 只构建其中一个
+powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1 -Variant Personal
+powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1 -Variant Distribution
+```
+
+构建前置条件：Node.js + npm、Rust + MSVC（`rustup`）、WebView2 Runtime（Windows 11 自带）。
+Personal 安装包包含本机 `.env` 和 `.venv`，**只能自己用，不要外发**；如需分享，请构建 Distribution。
+个人版 venv 的 `pyvenv.cfg` 指向本机 `D:\python3.11`，因此 Personal 版依赖同一台机器的 Python 安装；分发版不依赖系统 Python。
+
+**运行数据**
+
+首次启动会在 `%APPDATA%\com.stellar.nexus` 下生成 `config.yaml`、`.env`、`prompts/`、`workspace/` 和 SQLite 数据库。
+首次启动可能因 Windows Defender 扫描 venv/后端而较慢，启动页最多等待约 45 秒，请勿提前关闭。
+
+启动失败时查看：
+
+```text
+%LOCALAPPDATA%\Nexus\logs\desktop.log    # 桌面壳 / 后端启动
+%APPDATA%\com.stellar.nexus\data\agent.log # 后端运行日志（若已初始化）
+```
+
+安装包未做代码签名，Windows 可能显示 SmartScreen 提示，选择「更多信息 → 仍要运行」即可。
 
 ## 配置
 
@@ -297,7 +354,7 @@ start.bat
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-当前 **339 passed / 2 skipped**；前端 **39 个测试文件 / 208 passed + 6 skipped**。
+当前 **351 passed / 2 skipped**；前端 **40 个测试文件 / 213 passed + 6 skipped**。
 
 完整测试范围、交付清单、已知待办与已清偿技术债见 [docs/development.md](docs/development.md)；新增工具（5 步 + 可运行模板）见 [docs/tool-development.md](docs/tool-development.md)。
 
@@ -306,7 +363,7 @@ start.bat
 | 文档 | 内容 |
 |---|---|
 | [技术白皮书](docs/whitepaper.md) | 项目概述、架构选型、核心突破、安全边界 |
-| [设计决策](docs/design-decisions.md) | 68 条关键取舍与原因 |
+| [设计决策](docs/design-decisions.md) | 71 条关键取舍与原因 |
 | [Web API](docs/api.md) | REST 端点、SSE 事件协议、审批流 |
 | [模型接入](docs/models.md) | 多 provider 配置与 `config check` |
 | [CLI 用法](docs/cli.md) | 命令行、交互模式、会话恢复 |
@@ -316,4 +373,4 @@ start.bat
 
 ## 设计决策
 
-68 条设计决策（配置校验、路径语义、工具边界、流式协议、审批线程模型、上下文摘要、前端交互）见 [docs/design-decisions.md](docs/design-decisions.md)。
+71 条设计决策（配置校验、路径语义、工具边界、流式协议、审批线程模型、上下文摘要、前端交互）见 [docs/design-decisions.md](docs/design-decisions.md)。

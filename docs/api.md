@@ -64,9 +64,18 @@ backend 会存 `[图片]` 作为文本占位并转换为 OpenAI Vision content �
 {"type":"tool_call_end","tool_call_id":"...","name":"read_file","ok":true,"content":"..."}
 {"type":"approval_required","approval_id":"ap_1a2b3c4d","session_id":"...","tool_call_id":"...","name":"write_file","arguments":"{...原始 JSON...}","expires_in":300}
 {"type":"text_delta","delta":"..."}                    ← 真·逐 token
+{"type":"notice","content":"为节省上下文，已自动压缩前 3 轮对话。","rounds":3,"summary":"...","total_summary":"..."}  ← 摘要压缩通知
 {"type":"message_end","content":"...","reasoning":"...","usage":{"prompt_tokens":24,"completion_tokens":12,"total_tokens":36,"cache_hit_tokens":18,"cache_hit_rate":0.75},"rounds":1,"tool_limit_reached":false}
 {"type":"error","message":"...","code":"ProviderAuthError"}
 ```
 
 `arguments` 是模型返回的**原始 JSON 字符串**（后端不解析再序列化，与第 21 条一致）；
 前端自己格式化显示。
+
+`notice` 当前用于上下文摘要通知，通常出现在 `message_start` 之后、正文 `text_delta` 之前：
+
+- `content`：给用户看的一行提示，例如「为节省上下文，已自动压缩前 3 轮对话。」；
+- `rounds`：本次移除的 user 消息数（即提示里的 X）；
+- `summary`：本次调用得到的摘要正文，供前端「点击查看摘要」；
+- `total_summary`：累计历史摘要（多轮压缩时可能包含更早内容）。
+- 该事件只存在于当前 SSE 流，不落库；刷新会话后不会重放。

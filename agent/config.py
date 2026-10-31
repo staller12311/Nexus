@@ -47,6 +47,8 @@ KNOWN_TOOLS = (
     "run_python_code",
     "http_get",
     "get_time",
+    "search_code",
+    "git_status",
 )
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 
@@ -188,10 +190,20 @@ class PythonExecConfig(_StrictModel):
 
 class ToolsConfig(_StrictModel):
     enabled: list[str] = Field(
-        default_factory=lambda: ["read_file", "write_file", "list_dir", "get_time"]
+        default_factory=lambda: [
+            "read_file",
+            "write_file",
+            "list_dir",
+            "get_time",
+            "search_code",
+            "git_status",
+        ]
     )
     #: 危险工具调用前是否挂起等人工审批（Web 走 SSE 审批卡片，CLI 走终端 y/N）
     require_approval: bool = False
+    #: 是否允许 run_shell 使用 shell=True。开启后必须同时 require_approval=true，
+    #: 且每次调用都强制进入审批流；这仍不是 OS 隔离。
+    allow_unsafe_shell: bool = False
     #: 需要审批的工具名（require_approval=false 时不生效，但仍会做合法性校验）
     approval_required: list[str] = Field(
         default_factory=lambda: list(DEFAULT_APPROVAL_TOOLS)
@@ -228,6 +240,15 @@ class ToolsConfig(_StrictModel):
         if duplicated:
             raise ValueError(f"tools.approval_required 中存在重复项：{duplicated}")
         return value
+
+    @model_validator(mode="after")
+    def _unsafe_shell_requires_approval(self) -> "ToolsConfig":
+        if self.allow_unsafe_shell and not self.require_approval:
+            raise ValueError(
+                "tools.allow_unsafe_shell=true 时必须同时设置 tools.require_approval=true："
+                "shell=True 会绕过命令白名单，必须强制人工审批。"
+            )
+        return self
 
 
 class StorageConfig(_StrictModel):

@@ -58,10 +58,12 @@ tools:
   #   run_python_code → 任意代码执行，确认下面的风险提示后加入 enabled
   # get_time 是示例工具（README「如何新增一个工具」的模板）：无副作用，不需要配置；
   # 不想要就从本列表里删掉它，代码留着也无害。
-  enabled: [read_file, write_file, create_dir, delete_path, move_path, list_dir, get_time]
+  enabled: [read_file, write_file, create_dir, delete_path, move_path, list_dir, get_time, search_code, git_status]
   # 危险工具调用前挂起，等人工确认（Web 端黄色审批卡片 / CLI 终端 y/N）。
   # 默认关闭，避免"复制配置直接跑批量写入"；需要时改成 true。
   require_approval: false
+  # shell=True 会绕过白名单；开启时必须同时 require_approval: true
+  allow_unsafe_shell: false
   # 审批只覆盖「代码执行 / 删除 / shell」；write_file、create_dir 在 workspace
   # 沙箱边界内静默执行（覆盖已有文件会在工具结果里注明），避免生成页面时逐文件打断。
   approval_required: [run_python_code, delete_path, run_shell]

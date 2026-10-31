@@ -68,7 +68,7 @@ def run_python_code(
     started = time.perf_counter()
     try:
         completed = subprocess.run(
-            [sys.executable, "-I", "-B", "-X", "utf8", str(temp_file)],
+            [_python_executable(), "-I", "-B", "-X", "utf8", str(temp_file)],
             cwd=str(workspace.root),
             env=_minimal_env(),
             timeout=timeout,
@@ -135,6 +135,14 @@ def _cleanup(temp_file: Path, temp_dir: Path) -> None:
         temp_dir.rmdir()
     except OSError:  # pragma: no cover - 目录非空/已删除
         pass
+
+
+def _python_executable() -> str:
+    """打包版使用随安装包附带的 embeddable Python；开发/CLI 仍用当前解释器。"""
+    configured = os.environ.get("NEXUS_PYTHON_EXECUTABLE", "").strip()
+    if configured and Path(configured).is_file():
+        return configured
+    return sys.executable
 
 
 def _minimal_env() -> dict[str, str]:

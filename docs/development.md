@@ -11,13 +11,48 @@
 > 必须用 `python -m pytest`（而不是裸 `pytest`）：测试通过包名 `agent.*` 导入，
 > 需要仓库根目录在 `sys.path` 上，`python -m` 会把当前目录加进去。
 
-当前全量：**339 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
+当前全量：**351 passed / 2 skipped**（2 条 skip 是 Windows 符号链接权限，见第 18 条）。
 后端用例：`tests/test_backend_service.py` 覆盖工作区 / 知识库 / 自定义模型 / 用量统计 / 审批接口；
 本轮新增上下文管理 4 条（工具参数压缩、80% 摘要替换、摘要失败回退、1M 窗口识别），
 以及此前的非法 JSON 本地拦截 / 审批修正，总数从 321 增至 328。
-前端：39 个测试文件 / 208 passed + 6 skipped（含审批卡片、审批+流式稳定性、错误边界、模型菜单、状态栏、图片压缩与 Vision UI 用例）。
+前端：40 个测试文件 / 213 passed + 6 skipped（含审批卡片、审批+流式稳定性、错误边界、模型菜单、状态栏、图片压缩与 Vision UI 用例）。
 
 ---
+
+## 桌面打包
+
+```powershell
+# 默认同时构建 Personal + Distribution
+powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1
+
+# 单独构建
+powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1 -Variant Personal
+powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1 -Variant Distribution
+
+# 只准备后端资源，不跑 NSIS
+powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1 -SkipInstaller
+```
+
+两个安装包：
+
+- `Nexus 智枢_1.1.0_x64-personal-setup.exe`：包含本机 `.env`、`config.yaml` 和完整 `.venv`，`run_python_code` 使用 venv；只供自己用。
+- `Nexus 智枢_1.1.0_x64-distribution-setup.exe`：使用 `config.example.yaml` + 空 `.env` 模板 + 便携 Python，不含 venv，适合分发。
+
+产物：
+
+- 后端 onedir：`packaging/dist/nexus-backend/`
+- Tauri 资源：`frontend/src-tauri/resources/backend/`
+- NSIS：`frontend/src-tauri/target/release/bundle/nsis/`
+
+注意：
+
+- `packaging/python-embed/` 是便携 Python，首次构建会自动下载；不要提交进 Git。
+- Personal 包含本机 venv 与真实密钥，**绝不能外发**；需要分享时构建 Distribution。
+- Personal 的 venv 路径绑定本机 `D:\python3.11`；换机器请用 Distribution，或重新创建 venv 后打包。
+- NSIS 需要 WebView2 Runtime；当前配置为 `webviewInstallMode: skip`，Windows 11 自带。
+- 安装包未签名，SmartScreen 提示属于预期行为。
+- 首次启动可能被 Defender 扫描拖慢，端口等待上限为 45 秒；启动失败日志在 `%LOCALAPPDATA%\Nexus\logs\desktop.log`。
+- 不要把 `cargo build --release` 直接产出的 exe 复制到安装目录：Tauri CLI 的 `tauri build` 才会嵌入前端资源；直接 cargo 构建会走 `devUrl`，表现为 "无法访问网页"。
 
 ## 交付清单
 
@@ -28,7 +63,7 @@
 - [x] **三种用法示例**：`run "问题"` / `chat` / `sessions resume <id>`，均在 `## 运行`，附真实终端输出
 - [x] **如何新增一个模型**：`### 如何新增一个模型`（Moonshot 示例 + `.env` 步骤 + 真实 `config check` 输出）
 - [x] **如何新增一个工具**：`## 如何新增一个工具`（`get_time` 示例 + 5 步改动 + 真实 `tools list` / `run` 输出）
-- [x] **「设计决策」章节**：`## 设计决策`（68 条，含 Web 阶段的 34–68）
+- [x] **「设计决策」章节**：`## 设计决策`（71 条，含 Web 阶段的 34–71）
 
 Web 界面（第一阶段 CLI 之外的增量交付）：
 

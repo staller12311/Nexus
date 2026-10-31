@@ -46,6 +46,7 @@ const TITLES: Record<string, string> = {
   delete_path: 'AI 想删除文件或空目录',
   move_path: 'AI 想移动 / 重命名',
   run_python_code: 'AI 想执行 Python 代码',
+  run_shell: 'AI 想执行 Shell 命令',
 }
 
 function Subtitle({ text }: { text: string }) {
@@ -62,7 +63,11 @@ export function ApprovalCard({ call }: { call: ToolCallView }) {
   const path = asText(args.path) || asText(args.src)
   const dest = asText(args.dest)
   const content = asText(args.content) || asText(args.code)
+  const command = asText(args.command)
   const timeout = typeof args.timeout === 'number' ? args.timeout : undefined
+  const isExecutable = call.name === 'run_shell' || call.name === 'run_python_code'
+  const executableContent = call.name === 'run_shell' ? command : content
+  const executableLanguage = call.name === 'run_shell' ? 'bash' : 'python'
 
   const title = TITLES[call.name] ?? `AI 想调用 ${call.name}`
   const lines = content ? content.split('\n') : []
@@ -77,8 +82,10 @@ export function ApprovalCard({ call }: { call: ToolCallView }) {
         : call.name === 'move_path'
           ? '移动 / 重命名后原路径将不存在。'
           : call.name === 'run_python_code'
-            ? `同意后会在工作区内以临时 .py 执行，最长 ${timeout ?? 10}s。`
-            : '同意后立即执行；拒绝则把结果告诉模型。'
+            ? `同意后会在工作区内以临时 .py 执行，最长 ${timeout ?? 10}s。这是进程级轻量沙箱，不是 OS 隔离。`
+            : call.name === 'run_shell'
+              ? '同意后会把完整命令交给系统 Shell 执行（可能是 shell=True，不受 workspace 文件工具边界保护）。'
+              : '同意后立即执行；拒绝则把结果告诉模型。'
 
   return (
     <div
@@ -114,7 +121,29 @@ export function ApprovalCard({ call }: { call: ToolCallView }) {
           </div>
         )}
 
-        {content ? (
+        {isExecutable ? (
+          <div className="rounded-xl border-2 border-red-400 bg-red-50/80 p-2" role="alert">
+            <div
+              data-testid="danger-warning"
+              className="mb-2 rounded-md border border-red-500 bg-red-600 px-3 py-2 text-xs font-semibold leading-5 text-white"
+            >
+              🚨 警告：这是一段可执行代码，请在确认安全后点击同意。
+            </div>
+            <div data-testid="danger-code">
+              <CodeBlock language={executableLanguage} value={executableContent} danger />
+            </div>
+            {call.name === 'run_python_code' && (
+              <div className="px-1 text-[10px] font-medium text-red-700">
+                进程级轻量沙箱，非 OS 隔离；代码以当前后端进程权限运行。
+              </div>
+            )}
+            {call.name === 'run_shell' && (
+              <div className="px-1 text-[10px] font-medium text-red-700">
+                审批只是人工确认，不构成安全隔离；请逐字核对命令。
+              </div>
+            )}
+          </div>
+        ) : content ? (
           <>
             <div className="mb-1 flex items-center gap-2 text-[10px] text-amber-700">
               <span>即将写入的完整内容（{lines.length} 行，只读预览）</span>

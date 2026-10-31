@@ -58,6 +58,8 @@ def test_example_config_is_valid() -> None:
         "move_path",
         "list_dir",
         "get_time",
+        "search_code",
+        "git_status",
     ]
     assert "http_get" not in config.tools.enabled
     # 任意代码执行工具默认关闭（config.example.yaml 只在 approval_required 里登记它）
@@ -110,6 +112,7 @@ def test_example_config_keeps_field_names() -> None:
         "run_shell",
         "python_exec",
         "http_get",
+        "allow_unsafe_shell",
     }
     assert set(raw["storage"]) == {"db_path"}
     assert set(raw["logging"]) == {"level", "file"}
@@ -258,6 +261,19 @@ def test_run_shell_allowlist_defaults_to_empty() -> None:
     assert "run_python_code" in config.tools.approval_required
     assert config.tools.python_exec.timeout == 10
     assert config.tools.python_exec.max_output_chars == 8000
+
+
+def test_unsafe_shell_requires_approval() -> None:
+    data = _minimal_config()
+    data["tools"] = {
+        "enabled": ["run_shell"],
+        "allow_unsafe_shell": True,
+        "require_approval": False,
+    }
+    with pytest.raises(ConfigError) as excinfo:
+        build_config(data)
+    assert "allow_unsafe_shell" in str(excinfo.value)
+    assert "require_approval" in str(excinfo.value)
 
 
 def test_example_config_has_empty_allowlists() -> None:

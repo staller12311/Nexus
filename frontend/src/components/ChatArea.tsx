@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowDown } from 'lucide-react'
 import { useChatStore } from '../store/chatStore'
 import { MessageBubble } from './MessageBubble'
+import { SummaryNoticeCard } from './SummaryNotice'
 import { UploadCards } from './UploadCards'
 
 const EXAMPLES = [
@@ -46,6 +47,7 @@ function distanceToBottom(element: HTMLElement): number {
 export function ChatArea() {
   const messages = useChatStore((state) => state.messages)
   const kbUploads = useChatStore((state) => state.kbUploads)
+  const summaryNotices = useChatStore((state) => state.summaryNotices)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   // 「用户正在往上看」：true 时流式新内容绝不把页面拽回底部（README 第 56 条）
@@ -128,6 +130,9 @@ export function ChatArea() {
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 py-6">
           {messages.map((message) => (
             <MessageBubble key={message.id} message={message} />
+          ))}
+          {summaryNotices.map((notice) => (
+            <SummaryNoticeCard key={notice.id} notice={notice} />
           ))}
           <UploadCards />
           <div ref={bottomRef} />

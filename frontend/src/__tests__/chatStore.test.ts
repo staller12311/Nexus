@@ -166,6 +166,27 @@ describe('chatStore.sendMessage 消费 SSE', () => {
     expect(useChatStore.getState().streaming).toBe(false)
   })
 
+  it('notice 事件：记录摘要压缩提示但不混入正文', async () => {
+    stubFetch({
+      frames: [
+        'data: {"type":"message_start","session_id":"sess-1"}\n\n',
+        'data: {"type":"notice","content":"为节省上下文，已自动压缩前 3 轮对话。","summary":"用户之前的要求摘要","rounds":3}\n\n',
+        'data: {"type":"text_delta","delta":"继续回答"}\n\n',
+        'data: {"type":"message_end","content":"继续回答"}\n\n',
+      ],
+    })
+    await useChatStore.getState().sendMessage('继续')
+
+    const state = useChatStore.getState()
+    expect(state.summaryNotices).toHaveLength(1)
+    expect(state.summaryNotices[0]).toMatchObject({
+      content: '为节省上下文，已自动压缩前 3 轮对话。',
+      summary: '用户之前的要求摘要',
+      rounds: 3,
+    })
+    expect(state.messages[1].content).toBe('继续回答')
+  })
+
   it('error 事件：进 ErrorBanner 且 streaming 复位', async () => {
     stubFetch({
       frames: [

@@ -8,12 +8,12 @@ describe('安全沙箱徽章', () => {
     useChatStore.getState().reset()
   })
 
-  it('回形针旁边显示「安全沙箱保护中」徽章', () => {
+  it('回形针旁边显示「工作区沙箱保护中」徽章', () => {
     render(<Composer />)
 
     const badge = screen.getByTestId('sandbox-badge')
     expect(badge).toBeInTheDocument()
-    expect(badge).toHaveTextContent('安全沙箱保护中')
+    expect(badge).toHaveTextContent('工作区沙箱保护中')
     // 徽章紧跟在「上传文档到知识库」按钮之后
     const uploadButton = screen.getByLabelText('上传文档到知识库')
     expect(uploadButton.parentElement?.contains(badge)).toBe(true)

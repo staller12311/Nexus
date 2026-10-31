@@ -203,7 +203,7 @@ describe('多根工作区（附加目录）前端', () => {
     render(<Composer />)
 
     const badge = screen.getByTestId('sandbox-badge')
-    expect(badge).toHaveTextContent('安全沙箱保护中')
+    expect(badge).toHaveTextContent('工作区沙箱保护中')
     // 徽章上直接显示当前工作区（视觉提示挂载已生效）
     expect(badge).toHaveTextContent('D:\\ProjectA')
   })

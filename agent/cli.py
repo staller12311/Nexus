@@ -49,7 +49,7 @@ ROLE_STYLES = {
 }
 
 #: 默认禁用、需要显式配置白名单才安全的工具
-DEFAULT_DISABLED_TOOLS = {"run_shell", "http_get"}
+DEFAULT_DISABLED_TOOLS = {"run_shell", "http_get", "run_python_code"}
 
 
 def install_interrupt_handlers() -> None:
@@ -237,14 +237,21 @@ def render_tools_table(console: Console, config: AppConfig) -> None:
     enabled = set(config.tools.enabled)
     table = Table(box=box.SIMPLE_HEAD, padding=(0, 1), expand=False, pad_edge=False)
     table.add_column("", width=1, no_wrap=True)
-    table.add_column("工具", width=12, no_wrap=True, style="cyan")
-    table.add_column("状态", max_width=24, no_wrap=True, overflow="ellipsis")
+    table.add_column("工具", width=16, no_wrap=True, style="cyan")
+    table.add_column("状态", width=22, no_wrap=True, overflow="ellipsis")
     table.add_column("说明", no_wrap=True, overflow="ellipsis")
     descriptions = {
         "read_file": "读取 workspace 内文件",
         "write_file": "写入 workspace 内文件",
         "list_dir": "列出 workspace 内目录",
-        "run_shell": f"执行命令（白名单：{config.tools.run_shell.allowed_commands or '空'}）",
+        "run_shell": (
+            "执行任意 Shell 命令（shell=True，强制审批）"
+            if config.tools.allow_unsafe_shell
+            else f"执行命令（白名单：{config.tools.run_shell.allowed_commands or '空'}）"
+        ),
+        "run_python_code": f"执行 Python（{config.tools.python_exec.timeout:g}s，进程级沙箱，非 OS 隔离）",
+        "search_code": "在 workspace 内按行搜索代码（只读）",
+        "git_status": "查看 git status --short（只读）",
         "http_get": f"GET 白名单域名（{config.tools.http_get.allowed_domains or '空'}）",
         # 新增工具时这里也要加一行，否则 tools list 的「说明」列是空的
         "get_time": "返回当前时间（示例工具）",

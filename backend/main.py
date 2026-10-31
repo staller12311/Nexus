@@ -15,6 +15,10 @@ from .api.routes import router
 ALLOWED_ORIGINS = [
     "http://localhost:5173",  # Vite 默认端口
     "http://127.0.0.1:5173",
+    # Tauri v2 自定义协议 origin（不同平台/版本两种写法都放行）
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+    "tauri://localhost",
 ]
 
 #: 知识库文档解析的可选依赖：(import 名, pip 包名)
@@ -22,7 +26,7 @@ OPTIONAL_DEPENDENCIES = (("docx", "python-docx"), ("pypdf", "pypdf"))
 
 app = FastAPI(
     title="LLM Agent Web API",
-    version="0.1.0",
+    version="1.1.0",
     description=(
         "把本地 CLI 智能体包装成 HTTP 接口。所有智能体逻辑复用 `agent` 包，"
         "本服务只负责调用与传事件。"

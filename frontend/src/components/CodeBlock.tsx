@@ -68,6 +68,8 @@ export type CodeBlockProps = {
   /** 语言标识（```python 里的 python）；拿不到就传 text */
   language: string
   value: string
+  /** 危险操作（shell / Python 执行）使用鲜红色边框与标题 */
+  danger?: boolean
   /**
    * 这条消息还在流式输出中。
    *
@@ -82,7 +84,7 @@ export type CodeBlockProps = {
  * 代码块：深色背景 + 行号 + 语法高亮 + 横向滚动 + 顶部「复制代码」。
  * 横向滚动放在外层容器上，保证长行不会把聊天气泡撑爆。
  */
-function CodeBlockInner({ language, value, streaming = false }: CodeBlockProps) {
+function CodeBlockInner({ language, value, streaming = false, danger = false }: CodeBlockProps) {
   const [copied, setCopied] = useState(false)
   const normalized = useMemo(() => language.toLowerCase(), [language])
   const registered = normalized in LANGUAGES
@@ -94,8 +96,17 @@ function CodeBlockInner({ language, value, streaming = false }: CodeBlockProps) 
   }
 
   return (
-    <div className="my-2 min-w-0 overflow-hidden rounded-lg border border-slate-700 bg-[#0f172a] shadow-sm">
-      <div className="flex items-center justify-between gap-2 border-b border-slate-700 bg-[#111c33] px-3 py-1.5">
+    <div
+      data-danger={danger ? 'true' : undefined}
+      className={`my-2 min-w-0 overflow-hidden rounded-lg border shadow-sm ${
+        danger ? 'border-2 border-red-500 bg-[#1f0b0d]' : 'border-slate-700 bg-[#0f172a]'
+      }`}
+    >
+      <div
+        className={`flex items-center justify-between gap-2 border-b px-3 py-1.5 ${
+          danger ? 'border-red-500 bg-red-950/60' : 'border-slate-700 bg-[#111c33]'
+        }`}
+      >
         <span className="font-mono text-[11px] uppercase tracking-wide text-slate-400">
           {registered ? normalized : 'text'}
           {streaming && <span className="ml-1 normal-case text-slate-500">· 输出中</span>}

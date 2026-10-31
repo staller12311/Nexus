@@ -190,6 +190,43 @@ describe('审批事件与工具卡片', () => {
     })
   })
 
+  it('run_python_code：鲜红代码块 + 完整代码 + 强制警告', () => {
+    const code = Array.from({ length: 240 }, (_, index) => `value_${index} = ${index}`).join('\n')
+    render(
+      <ApprovalCard
+        call={writeCall({
+          name: 'run_python_code',
+          arguments: JSON.stringify({ code }),
+        })}
+      />,
+    )
+
+    expect(screen.getByText('AI 想执行 Python 代码')).toBeInTheDocument()
+    expect(screen.getByTestId('danger-warning')).toHaveTextContent(
+      '🚨 警告：这是一段可执行代码，请在确认安全后点击同意。',
+    )
+    expect(screen.getByTestId('danger-code')).toHaveTextContent('value_239 = 239')
+    expect(screen.getByTestId('danger-code').querySelector('[data-danger="true"]')).not.toBeNull()
+    expect(screen.getByText(/进程级轻量沙箱，非 OS 隔离/)).toBeInTheDocument()
+  })
+
+  it('run_shell：展示完整命令而不是 JSON 参数', () => {
+    const command = 'echo one && echo two | findstr two'
+    render(
+      <ApprovalCard
+        call={writeCall({
+          name: 'run_shell',
+          arguments: JSON.stringify({ command }),
+        })}
+      />,
+    )
+
+    expect(screen.getByText('AI 想执行 Shell 命令')).toBeInTheDocument()
+    expect(screen.getByTestId('danger-warning')).toBeInTheDocument()
+    expect(screen.getByTestId('danger-code')).toHaveTextContent(command)
+    expect(screen.queryByText(/"command"/)).not.toBeInTheDocument()
+  })
+
   it('待审批时渲染 ApprovalCard；决定后渲染普通工具卡 + 审批徽标', () => {
     const pending = writeCall({ status: 'pending' })
     const { unmount } = render(<ToolCard call={pending} />)

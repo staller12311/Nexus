@@ -989,3 +989,62 @@ def test_summary_failure_falls_back_to_trimming(tmp_path: Path) -> None:
     # 摘要失败 → 退回按条数裁剪（system + 最近 2 条）
     assert len(provider.requests[0]["messages"]) <= 3
     storage.close()
+
+
+def test_summary_emits_summary_notice_event(tmp_path: Path) -> None:
+    """摘要成功时，run_stream 必须产出 summary_notice，而不是静默压缩。"""
+    session = Storage(tmp_path / "s.db").create_session("m")
+    storage = Storage(tmp_path / "s.db")
+    history: list[dict[str, Any]] = []
+    for index in range(6):
+        history.append({"role": "user", "content": f"第 {index} 轮需求：" + "长文本" * 80})
+        history.append({"role": "assistant", "content": "回答" * 80})
+
+    provider = fake_provider([final("继续")])
+    loop = AgentLoop(
+        provider,
+        ToolRegistry(),
+        system_prompt="你是助手。",
+        storage=storage,
+        session_id=session.id,
+        history=history,
+        context_window=500,
+        summarizer=lambda transcript: "用户之前要求做长任务。",
+        context_summary_messages=10,
+    )
+    events = list(loop.run_stream("继续"))
+    notices = [event for event in events if event.get("type") == "summary_notice"]
+    assert len(notices) == 1
+    notice = notices[0]
+    assert notice["rounds"] >= 1
+    assert "已自动压缩" in notice["content"]
+    assert notice["summary"] == "用户之前要求做长任务。"
+    assert any(event.get("type") == "done" for event in events)
+    storage.close()
+
+
+def test_unsafe_shell_forces_approval_even_if_global_list_empty(tmp_path: Path) -> None:
+    """allow_unsafe_shell 是独立危险开关：run_shell 必须进入审批集合。"""
+    (tmp_path / "workspace").mkdir(exist_ok=True)
+    config = build_config(
+        {
+            "default_model": "m",
+            "models": {
+                "m": {
+                    "base_url": "http://127.0.0.1:9/v1",
+                    "model": "test-model",
+                    "api_key_env": "LOOP_TEST_KEY",
+                }
+            },
+            "agent": {"workspace": str(tmp_path / "workspace")},
+            "tools": {
+                "enabled": ["run_shell"],
+                "allow_unsafe_shell": True,
+                "require_approval": True,
+                "approval_required": [],
+                "run_shell": {"allowed_commands": []},
+            },
+        }
+    )
+    loop = AgentLoop.from_config(config, fake_provider([]), build_registry(config))
+    assert "run_shell" in loop.approval_required

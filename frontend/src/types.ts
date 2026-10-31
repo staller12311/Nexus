@@ -100,6 +100,14 @@ export type ToolCallView = {
   approval?: ToolApproval
 }
 
+/** SSE notice：上下文摘要压缩提示（当前聊天流内展示，不落库） */
+export type SummaryNotice = {
+  id: string
+  content: string
+  summary: string
+  rounds: number
+}
+
 export type ChatMessage = {
   id: string
   role: 'user' | 'assistant'

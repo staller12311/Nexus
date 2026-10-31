@@ -1,13 +1,16 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "node --import ./scripts/patch-child-process.mjs ./node_modules/vite/bin/vite.js",
     "build": "tsc --noEmit && node --import ./scripts/patch-child-process.mjs ./node_modules/vite/bin/vite.js build",
     "preview": "node --import ./scripts/patch-child-process.mjs ./node_modules/vite/bin/vite.js preview",
-    "test": "node --import ./scripts/patch-child-process.mjs ./node_modules/vitest/vitest.mjs run"
+    "test": "node --import ./scripts/patch-child-process.mjs ./node_modules/vitest/vitest.mjs run",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build"
   },
   "dependencies": {
     "lucide-react": "^1.62.0",
@@ -19,6 +22,7 @@
     "zustand": "^5.0.16"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { Check, Copy, Pencil, RefreshCw } from 'lucide-react'
 import type { ChatMessage } from '../types'
 import { useChatStore } from '../store/chatStore'
+import { apiUrl } from '../lib/base'
 import { CodeBlock } from './CodeBlock'
 import { ReasoningPanel } from './ReasoningPanel'
 import { ToolCard } from './ToolCard'
@@ -129,14 +130,14 @@ export function MessageBubbleInner({ message }: { message: ChatMessage }) {
             {message.attachments?.map((attachment) => (
               <a
                 key={attachment.id}
-                href={attachment.url}
+                href={apiUrl(attachment.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 title={attachment.name}
                 className="block overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
               >
                 <img
-                  src={attachment.url}
+                  src={apiUrl(attachment.url)}
                   alt={attachment.name}
                   data-testid="message-image"
                   loading="lazy"

@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 from pathlib import Path
@@ -21,6 +22,7 @@ DEFAULT_TIMEOUT = 30.0
 MAX_OUTPUT_CHARS = 20_000
 #: 即使出错也要保证 PATH 查找可用
 _ENV_OVERRIDES = {"PYTHONIOENCODING": "utf-8"}
+logger = logging.getLogger("agent.tools.shell")
 
 
 def split_command(command: str) -> list[str]:
@@ -63,8 +65,17 @@ def run_shell(
     command: str,
     allowed_commands: Sequence[str] = (),
     timeout: float = DEFAULT_TIMEOUT,
+    *,
+    allow_unsafe_shell: bool = False,
 ) -> str:
-    """在 ``cwd`` 下以 ``shell=False`` 执行白名单内的命令。"""
+    """在 ``cwd`` 下执行命令。
+
+    默认 ``shell=False``，只执行白名单里的裸命令名；
+    ``allow_unsafe_shell=True`` 时改用 ``shell=True``，**绕过白名单**，
+    由 AgentLoop 强制审批。它不是 OS 隔离，审批只是人工确认。
+    """
+    if allow_unsafe_shell:
+        return _run_unsafe_shell(cwd, command, timeout)
     argv = split_command(command)
     if not argv:
         raise ToolError("命令不能为空")
@@ -117,6 +128,48 @@ def run_shell(
     stdout = _clip(completed.stdout or "")
     stderr = _clip(completed.stderr or "")
     parts = [f"$ {command}", f"退出码：{completed.returncode}"]
+    if stdout:
+        parts.append("--- stdout ---\n" + stdout)
+    if stderr:
+        parts.append("--- stderr ---\n" + stderr)
+    if not stdout and not stderr:
+        parts.append("（没有输出）")
+    return "\n".join(parts)
+
+
+def _run_unsafe_shell(cwd: Path, command: str, timeout: float) -> str:
+    """显式开启的高危模式：shell=True，完整命令交给系统 Shell。"""
+    text = (command or "").strip()
+    if not text:
+        raise ToolError("命令不能为空")
+    logger.warning("run_shell 使用 allow_unsafe_shell=True 执行命令：%s", text[:200])
+
+    env = {**os.environ, **_ENV_OVERRIDES}
+    try:
+        completed = subprocess.run(
+            text,
+            shell=True,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            env=env,
+            stdin=subprocess.DEVNULL,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ToolError(f"命令超时（{timeout:g}s）已被终止：{text}") from exc
+    except OSError as exc:
+        raise ToolError(f"命令执行失败：{exc}") from exc
+
+    stdout = _clip(completed.stdout or "")
+    stderr = _clip(completed.stderr or "")
+    parts = [
+        f"$ {text}",
+        "模式：shell=True（allow_unsafe_shell）",
+        f"退出码：{completed.returncode}",
+    ]
     if stdout:
         parts.append("--- stdout ---\n" + stdout)
     if stderr:

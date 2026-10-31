@@ -484,6 +484,8 @@ def test_default_config_enables_expected_tools() -> None:
         "move_path",
         "list_dir",
         "get_time",
+        "search_code",
+        "git_status",
     ]
     assert "run_shell" not in registry
     assert "http_get" not in registry
@@ -634,7 +636,7 @@ def test_registry_describe_lines(tmp_path: Path) -> None:
     lines = registry.describe_lines()
     assert any(line.startswith("read_file(path)") for line in lines)
     assert any(line.startswith("get_time()") for line in lines)
-    assert len(lines) == 4
+    assert len(lines) == 6
 
 
 def test_registry_accepts_json_string_arguments(tmp_path: Path) -> None:
@@ -701,6 +703,8 @@ def test_get_time_is_enabled_in_example_config() -> None:
         "move_path",
         "list_dir",
         "get_time",
+        "search_code",
+        "git_status",
     ]
 
 
@@ -709,3 +713,25 @@ def test_get_time_is_in_code_defaults(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     assert "get_time" in config.tools.enabled
     assert "get_time" in build_registry(config)
+
+
+def test_unsafe_shell_uses_shell_true_and_bypasses_allowlist(
+    ws_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return subprocess.CompletedProcess(args, 0, "ok\n", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = run_shell(
+        ws_root,
+        "echo hi && echo bye",
+        allowed_commands=[],
+        allow_unsafe_shell=True,
+    )
+    assert captured["kwargs"]["shell"] is True
+    assert "shell=True" in result
+    assert "退出码：0" in result
