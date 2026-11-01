@@ -276,7 +276,7 @@ sequenceDiagram
 
 ### 3.9 工程验证
 
-- 后端 **356 passed / 2 skipped**：涵盖主循环、Provider、存储、工具安全、配置、CLI、Web API、
+- 后端 **364 passed / 2 skipped**：涵盖主循环、Provider、存储、工具安全、配置、CLI、Web API、
   审批、代码执行、上下文压缩/摘要、真实 HTTP 假端点；
 - 前端 **40 文件 / 216 passed + 6 skipped**：流式渲染、工具卡、审批卡、滚动/StrictMode 稳定性、
   模型管理、Token 统计、错误边界；
@@ -369,7 +369,7 @@ sequenceDiagram
 
 | 指标 | 数值 / 说明 |
 |---|---|
-| 后端测试 | 356 passed / 2 skipped |
+| 后端测试 | 364 passed / 2 skipped |
 | 前端测试 | 40 files / 216 passed + 6 skipped |
 | 设计决策 | 72 条（README「设计决策」章节） |
 | 支持模型 | 任意 OpenAI 兼容端点；内置 DeepSeek/Qwen/Ollama 示例 |

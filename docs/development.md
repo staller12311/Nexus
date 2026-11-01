@@ -26,12 +26,41 @@
 > 必须用 `python -m pytest`（而不是裸 `pytest`）：测试通过包名 `agent.*` 导入，
 > 需要仓库根目录在 `sys.path` 上，`python -m` 会把当前目录加进去。
 
-当前全量：**360 passed / 2 skipped**（2 条 skip 是本机无法创建**文件**符号链接；
+当前全量：**364 passed / 2 skipped**（2 条 skip 是本机无法创建**文件**符号链接；
 目录场景已能用 junction 回退，见第 18 条）。
 后端用例：`tests/test_backend_service.py` 覆盖工作区 / 知识库 / 自定义模型 / 用量统计 / 审批接口；
 本轮新增上下文管理 4 条（工具参数压缩、80% 摘要替换、摘要失败回退、1M 窗口识别），
 以及此前的非法 JSON 本地拦截 / 审批修正，总数从 321 增至 328。
 前端：40 个测试文件 / 216 passed + 6 skipped（含审批卡片、审批+流式稳定性、错误边界、模型菜单、状态栏、图片压缩、Vision UI 与会话专属知识库用例）。
+
+### 检索质量评测（golden set）
+
+功能测试只能证明「检索有结果」，证明不了「结果对」。`tests/test_retrieval_eval.py`
+用固定语料（`tests/fixtures/retrieval_corpus/`，6 份 txt）+ 21 条 golden QA
+（`tests/fixtures/retrieval_golden.json`）把检索质量钉住，走纯 BM25 路径，
+不联网、不调模型，结果可复现。
+
+同时输出四项指标，口径不同：
+
+| 指标 | 含义 | 当前基线 |
+|---|---|---|
+| Recall@4 | 期望文档是否出现在前 4 条 | **95.2%** |
+| P@1 | 排第一的文档是否就是期望的 | **95.2%** |
+| MRR | 期望文档首次出现位置的倒数均值 | **0.952** |
+| 证据命中率 | 命中文档的片段里是否含关键证据串 | **100%** |
+
+看报告：`python -m pytest tests/test_retrieval_eval.py -q -s`
+
+三条纪律：
+
+- 阈值设为**略低于实测值**（留约 1 条用例余量）。要抬阈值，先把指标做上去，不要为绿而调数字。
+- 未命中的用例必须登记进 `tests/retrieval_eval.py` 的 `KNOWN_WEAKNESSES` 并写明原因，
+  否则用例会红 —— 不允许「悄悄变差还继续绿」。
+- 已知短板若被修好，`test_known_weakness_still_fails` 会反向报警，提示删除登记并上调阈值。
+
+当前已知短板：`vpn-device-lost`（查询说「笔记本丢了」、语料写「设备丢失」，判别性词零重叠，
+纯 BM25 无解，需同义词扩展或向量召回）。修法属功能改动，不与评测提交混做。
+
 
 ---
 

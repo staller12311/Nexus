@@ -1,0 +1,132 @@
+{
+  "description": "知识库检索质量 golden set。每条给出一个自然语言提问、期望命中的文档，以及（可选）命中片段里必须出现的证据串。用于回归检索链路，不依赖任何外部服务。",
+  "top_k": 4,
+  "cases": [
+    {
+      "id": "leave-carryover",
+      "query": "年假没休完可以留到明年吗",
+      "expect_doc": "leave-policy.txt",
+      "expect_any": ["3 月 31 日"]
+    },
+    {
+      "id": "leave-sick-proof",
+      "query": "请病假要提供什么证明",
+      "expect_doc": "leave-policy.txt",
+      "expect_any": ["病假证明"]
+    },
+    {
+      "id": "leave-overtime-expiry",
+      "query": "加班换的调休多久之内要用掉",
+      "expect_doc": "leave-policy.txt",
+      "expect_any": ["6 个月"]
+    },
+    {
+      "id": "leave-personal-cap",
+      "query": "事假一年最多能请几天",
+      "expect_doc": "leave-policy.txt",
+      "expect_any": ["15 天"]
+    },
+    {
+      "id": "expense-lost-invoice",
+      "query": "发票丢了还能报销吗",
+      "expect_doc": "expense-policy.txt",
+      "expect_any": ["遗失", "500"]
+    },
+    {
+      "id": "expense-deadline",
+      "query": "报销单最晚什么时候必须提交",
+      "expect_doc": "expense-policy.txt",
+      "expect_any": ["30 个自然日"]
+    },
+    {
+      "id": "expense-entertain",
+      "query": "请客户吃饭需要提前报备吗",
+      "expect_doc": "expense-policy.txt",
+      "expect_any": ["报备"]
+    },
+    {
+      "id": "expense-approval-level",
+      "query": "多少钱的报销需要副总签字",
+      "expect_doc": "expense-policy.txt",
+      "expect_any": ["5000"]
+    },
+    {
+      "id": "expense-hotel-cap",
+      "query": "出差住宿一晚能报多少",
+      "expect_doc": "expense-policy.txt",
+      "expect_any": ["600"]
+    },
+    {
+      "id": "pay-arrival",
+      "query": "报销款一般多久能到账",
+      "expect_doc": "reimbursement-timeline.txt",
+      "expect_any": ["T+1"]
+    },
+    {
+      "id": "pay-schedule",
+      "query": "财务一周哪几天统一打款",
+      "expect_doc": "reimbursement-timeline.txt",
+      "expect_any": ["周二"]
+    },
+    {
+      "id": "pay-frozen",
+      "query": "报销被打款冻结是什么原因",
+      "expect_doc": "reimbursement-timeline.txt",
+      "expect_any": ["冻结"]
+    },
+    {
+      "id": "vpn-troubleshoot",
+      "query": "VPN 连不上该怎么排查",
+      "expect_doc": "vpn-guide.txt",
+      "expect_any": ["排查", "超时"]
+    },
+    {
+      "id": "vpn-apply",
+      "query": "远程接入的账号在哪里申请",
+      "expect_doc": "vpn-guide.txt",
+      "expect_any": ["权限平台"]
+    },
+    {
+      "id": "vpn-device-lost",
+      "query": "工作笔记本丢了要怎么办",
+      "expect_doc": "vpn-guide.txt",
+      "expect_any": ["吊销"]
+    },
+    {
+      "id": "oncall-p1-escalate",
+      "query": "P1 故障多久之内必须升级",
+      "expect_doc": "oncall-runbook.txt",
+      "expect_any": ["15 分钟"]
+    },
+    {
+      "id": "oncall-postmortem",
+      "query": "故障复盘文档什么时候交",
+      "expect_doc": "oncall-runbook.txt",
+      "expect_any": ["3 个工作日"]
+    },
+    {
+      "id": "oncall-rollback-first",
+      "query": "线上出事第一步应该做什么",
+      "expect_doc": "oncall-runbook.txt",
+      "expect_any": ["回滚", "止血"]
+    },
+    {
+      "id": "retention-account",
+      "query": "离职以后我的账号多久会被回收",
+      "expect_doc": "data-retention.txt",
+      "expect_any": ["30 天"]
+    },
+    {
+      "id": "retention-access-log",
+      "query": "访问日志保存多长时间",
+      "expect_doc": "data-retention.txt",
+      "expect_any": ["180 天"]
+    },
+    {
+      "id": "retention-delete-request",
+      "query": "用户要求删掉自己的数据几天内要响应",
+      "expect_doc": "data-retention.txt",
+      "expect_any": ["15 个工作日"]
+    }
+  ]
+}
