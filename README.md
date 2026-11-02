@@ -159,6 +159,7 @@ sequenceDiagram
 <p align="center">
   <img src="./assets/demo-threejs.gif" alt="Three.js Demo" width="100%" style="border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
 </p>
+
 *(纯代码生成 2100+ 行 Three.js，未使用任何外部 3D 模型文件)*
 
 ###  对话与工具调用界面
@@ -166,6 +167,7 @@ sequenceDiagram
 
 ###  人工审批：危险操作先挂起，确认后才执行
 <p align="center"><a href="./assets/ui-approval.png"><img src="./assets/ui-approval.png" alt="Nexus 智枢 审批卡片：危险工具调用前挂起，人工同意或拒绝" width="100%" /></a></p>
+
 *(`run_python_code` / `delete_path` / `run_shell` 会挂起等待确认；默认关闭，配置 `tools.require_approval: true` 开启)*
 
 ## 项目结构
