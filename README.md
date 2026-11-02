@@ -153,14 +153,16 @@ sequenceDiagram
 
 ## 界面预览
 
-<p align="center"><a href="./assets/ui-chat.png"><img src="./assets/ui-chat.png" alt="Nexus 智枢 对话界面：流式回答、思考链与工具调用卡" width="100%" /></a></p>
+###  一句话生成 3D 交互场景
+> **Prompt**: "写一个雨夜便利店，要 Three.js 纯代码实现，包含粒子雨、光照反光、动态组装。"
 
-<details>
-<summary><b>审批卡片与代码执行边界（点击展开）</b></summary>
+<p align="center">
+  <img src="./assets/demo-threejs.gif" alt="Three.js Demo" width="100%" style="border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" />
+</p>
+*(纯代码生成 2100+ 行 Three.js，未使用任何外部 3D 模型文件)*
 
-<p align="center"><a href="./assets/ui-approval.png"><img src="./assets/ui-approval.png" alt="Nexus 智枢 审批卡片：write_file 只读代码预览、同意 / 拒绝" width="100%" /></a></p>
-
-</details>
+###  对话与工具调用界面
+<p align="center"><a href="./assets/ui-chat.png"><img src="./assets/ui-chat.png" alt="Nexus 智枢 对话界面" width="100%" /></a></p>
 
 ## 项目结构
 
