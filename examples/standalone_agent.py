@@ -29,6 +29,16 @@ from typing import Any
 # 直接从仓库根运行时，把根目录放进 sys.path（安装成包后这两行可以删掉）
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# 英文 locale 的 Windows 控制台默认是 cp1252，直接 print 中文会抛 UnicodeEncodeError。
+# 这里显式把输出改成 UTF-8，保证在任何机器上都能正常跑（CI 的英文 runner 就是这种情况）。
+for _stream in (sys.stdout, sys.stderr):
+    reconfigure = getattr(_stream, "reconfigure", None)
+    if reconfigure is not None:
+        try:
+            reconfigure(encoding="utf-8")
+        except (OSError, ValueError):  # pragma: no cover - 极少数不支持重配的标准流
+            pass
+
 from agent.loop import AgentLoop  # noqa: E402
 from agent.provider import ToolCall, Usage  # noqa: E402
 from agent.registry import ToolRegistry, ToolSpec  # noqa: E402
@@ -113,6 +123,8 @@ def main() -> int:
     ok = bool(result.content) and result.rounds >= 1
     print()
     print("结论：agent 包可脱离 backend 独立运行 =", ok)
+    # ASCII 标记：给自动化测试用，避免依赖控制台编码与中文输出
+    print("standalone_ok =", ok)
     return 0 if ok else 1
 
 

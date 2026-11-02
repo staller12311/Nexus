@@ -11,6 +11,7 @@ backend），进程内是测不出「干净启动」的。
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -32,6 +33,9 @@ def _run(code_or_path: str, *, as_file: bool = False) -> subprocess.CompletedPro
     cmd = [sys.executable, code_or_path if as_file else "-c"]
     if not as_file:
         cmd.append(code_or_path)
+    # 显式指定子进程输出编码：英文 locale 的 Windows runner 默认 cp1252，
+    # 脚本里的中文一 print 就 UnicodeEncodeError（CI #11 就是这么挂的）
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
     return subprocess.run(
         cmd,
         cwd=str(REPO),
@@ -40,6 +44,7 @@ def _run(code_or_path: str, *, as_file: bool = False) -> subprocess.CompletedPro
         encoding="utf-8",
         errors="replace",
         timeout=120,
+        env=env,
     )
 
 
@@ -52,7 +57,11 @@ def test_agent_package_does_not_pull_web_stack() -> None:
 
 
 def test_standalone_example_still_runs() -> None:
-    """examples/standalone_agent.py 是垂直应用的模板，必须能直接跑通。"""
+    """examples/standalone_agent.py 是垂直应用的模板，必须能直接跑通。
+
+    断言只看 ASCII 标记：「有没有中文被正确打印」属于脚本自己的事，
+    不该让测试依赖控制台 locale。
+    """
     completed = _run(str(REPO / "examples" / "standalone_agent.py"), as_file=True)
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "独立运行 = True" in completed.stdout
+    assert "standalone_ok = True" in completed.stdout
