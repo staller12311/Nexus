@@ -181,6 +181,8 @@ nexus-zhishu/
 ├── frontend/                 # React 19 + Vite + Tailwind
 │   └── src/                  # components / store / lib / 图片压缩
 ├── tests/                    # pytest：主循环、工具安全、审批、Vision
+├── examples/
+│   └── standalone_agent.py   # 只用 agent 包跑一次对话，不依赖 backend（当模板用）
 ├── docker/                   # Nginx 配置与后端容器入口
 ├── assets/                   # README 截图（ui-chat / ui-approval）
 ├── docs/                     # 深度文档
@@ -392,7 +394,7 @@ start.bat
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-当前 **397 passed / 2 skipped**；前端 **40 个测试文件 / 219 passed + 6 skipped**。
+当前 **399 passed / 2 skipped**；前端 **40 个测试文件 / 219 passed + 6 skipped**。
 
 完整测试范围、交付清单、已知待办与已清偿技术债见 [docs/development.md](docs/development.md)；新增工具（5 步 + 可运行模板）见 [docs/tool-development.md](docs/tool-development.md)。
 
