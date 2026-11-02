@@ -843,7 +843,11 @@ def test_full_loop_stops_at_tool_round_limit(
         finish_reason="tool_calls",
     )
     server = server_factory(default=tool_step)
-    loop, storage, session, _ = build_loop_stack(server, tmp_path, max_tool_rounds=2)
+    # 关掉「原地打转」护栏：这里要测轮次上限，而构造手法就是反复发同一个 list_dir，
+    # 正是护栏要拦的场景（默认 limit=2 会在第 2 轮就停成 no_progress）。
+    loop, storage, session, _ = build_loop_stack(
+        server, tmp_path, max_tool_rounds=2, no_progress_limit=0
+    )
 
     result = loop.run("一直列目录")
 

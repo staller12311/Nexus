@@ -106,6 +106,8 @@ def test_example_config_keeps_field_names() -> None:
         "context_summary_messages",
         "empty_answer_retries",
         "stepwise_delivery",
+        "no_progress_limit",
+        "verify_artifact_claims",
         "request_timeout",
         "max_retries",
     }

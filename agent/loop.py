@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import asdict, dataclass
 from typing import Any, Callable, Collection, Iterator, Mapping, Sequence
 
@@ -48,6 +49,22 @@ APPROVAL_REJECTED_MESSAGE = "用户已拒绝此操作，工具未执行。"
 INVALID_ARGUMENTS_PLACEHOLDER = "{}"
 #: 本地拦截后回灌给模型的错误文本（模型看到后可在同一轮内重新生成）。
 INVALID_ARGUMENTS_MESSAGE = "参数不是合法 JSON，请重新生成（本次工具未执行）。"
+
+#: 模型声称「已经产出文件」但实际没写时，追问一次用的提醒（system 消息，不污染对话气泡）
+ARTIFACT_CLAIM_NUDGE = (
+    "你上一条回复说已经创建/写入了文件，但这一轮并没有任何写入成功。"
+    "如果任务确实需要落盘：现在就直接调用 write_file 把内容真正写进去（可以分块写）。"
+    "如果其实不需要写文件，就明确说明「无需落盘」并给出结论，不要声称已保存。"
+)
+
+#: 「声称产出」的动词：只认强断言（创建/写入/保存），不认「生成/输出」这类常作修辞的说法
+_ARTIFACT_VERBS = re.compile(r"已(?:经)?(?:创建|写入|保存|写好)|写好了|创建了|保存了")
+#: 文件线索：扩展名或「文件/目录/路径」这类词（刻意不含「代码」，避免"已生成以下代码"误触发）
+_ARTIFACT_TOKENS = re.compile(
+    r"\.(?:py|js|ts|tsx|jsx|html|css|json|md|txt|vue|java|cpp|rs|yaml|yml)\b|文件|目录|文件夹|路径"
+)
+#: 会真正产生文件的工具：只有这些成功过，才认为「产物落盘」了
+WRITE_TOOLS = frozenset({"write_file", "create_dir", "move_path", "run_python_code"})
 
 #: 思考把输出预算吃光时的补救指令（以 system 消息追加，避免污染用户可见的对话气泡）。
 #:
@@ -86,7 +103,7 @@ class LoopResult:
     usage: Usage
     rounds: int
     tool_limit_reached: bool = False
-    finish: str = "stop"  # stop | tool_limit
+    finish: str = "stop"  # stop | tool_limit | no_progress
 
 
 def _split_groups(messages: Sequence[Mapping[str, Any]]) -> tuple[list[dict], list[list[dict]]]:
@@ -182,6 +199,8 @@ class AgentLoop:
         context_summary_trigger: float = 0.8,
         context_summary_messages: int = 10,
         empty_answer_retries: int = 1,
+        no_progress_limit: int = 2,
+        verify_artifact_claims: bool = True,
         request_transform: Callable[[list[dict[str, Any]]], list[dict[str, Any]]] | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
@@ -191,6 +210,10 @@ class AgentLoop:
         self.max_history_messages = max(1, int(max_history_messages))
         #: 思考把输出预算吃光时，最多补救几次（0 = 不补救，直接给提示）
         self.empty_answer_retries = max(0, min(3, int(empty_answer_retries)))
+        #: 连续多少轮「同调用+同结果」判定为原地打转（0 = 关闭）
+        self.no_progress_limit = max(0, min(10, int(no_progress_limit)))
+        #: 声称产出但没写盘时是否追问一次
+        self.verify_artifact_claims = bool(verify_artifact_claims)
         self.storage = storage
         self.session_id = session_id
         self.on_tool_call = on_tool_call
@@ -267,6 +290,8 @@ class AgentLoop:
             context_summary_trigger=config.agent.context_summary_trigger,
             context_summary_messages=config.agent.context_summary_messages,
             empty_answer_retries=config.agent.empty_answer_retries,
+            no_progress_limit=config.agent.no_progress_limit,
+            verify_artifact_claims=config.agent.verify_artifact_claims,
             request_transform=request_transform,
         )
 
@@ -341,6 +366,12 @@ class AgentLoop:
         run_usage = Usage()
         rounds = 0
         empty_retries = 0
+        # 原地打转检测：比较「调用 + 结果」，连续相同达阈值就停
+        last_fingerprint: tuple[Any, ...] | None = None
+        repeat_rounds = 0
+        # 假完成检测：本轮是否真的写成了东西、是否已经追问过一次
+        wrote_artifact = False
+        artifact_nudged = False
         while True:
             # 上限判定：已执行完 rounds 轮工具、正要从这里发起第 rounds+1 轮请求
             if rounds >= self.max_tool_rounds:
@@ -431,6 +462,22 @@ class AgentLoop:
             )
 
             if not result.wants_tools:
+                # 「假完成」检测：声称已经把文件写好了，但这一轮没有任何写入成功。
+                # 只追问一次，且只在注册表里真的有写工具时才问——否则问也没用。
+                if (
+                    self.verify_artifact_claims
+                    and not artifact_nudged
+                    and not wrote_artifact
+                    and self._has_write_tool()
+                    and self._claims_artifact(content)
+                ):
+                    artifact_nudged = True
+                    notice = "模型声称已产出文件，但本轮没有任何写入成功，正在要求它真正落盘…"
+                    self._logger.warning(notice)
+                    yield {"type": "notice", "text": notice}
+                    self._add_message({"role": "system", "content": ARTIFACT_CLAIM_NUDGE})
+                    continue
+
                 yield {
                     "type": "done",
                     "reasoning": "".join(reasoning_parts) or None,
@@ -442,9 +489,68 @@ class AgentLoop:
 
             rounds += 1
             self._invalid_arguments = invalid_arguments
-            self._execute_tool_calls(result.tool_calls)
+            outputs = self._execute_tool_calls(result.tool_calls)
+
+            if any(
+                call.name in WRITE_TOOLS
+                and not output.startswith(ERROR_PREFIX)
+                and output != APPROVAL_REJECTED_MESSAGE
+                for call, output in zip(result.tool_calls, outputs)
+            ):
+                wrote_artifact = True
+
+            # 原地打转：连续 N 轮「同样的调用 + 同样的结果」说明再问也不会有新信息，
+            # 与其继续烧 token，不如立刻停并让人决定。注意比对里带上了结果——
+            # 失败后重试同一调用（结果会变）不算打转。
+            fingerprint = (
+                tuple((call.name, (call.arguments or "").strip()) for call in result.tool_calls),
+                tuple(outputs),
+            )
+            repeat_rounds = repeat_rounds + 1 if fingerprint == last_fingerprint else 1
+            last_fingerprint = fingerprint
+
+            if self.no_progress_limit and repeat_rounds >= self.no_progress_limit:
+                repeated = result.tool_calls[0].name if result.tool_calls else "工具"
+                notice = (
+                    f"连续 {repeat_rounds} 轮出现完全相同的工具调用（{repeated}）"
+                    "且返回相同结果，判定为原地打转，已停止继续调用。"
+                    "请调整参数、换一种做法，或者直接告诉我下一步该怎么走。"
+                )
+                self._logger.warning(notice)
+                yield {"type": "notice", "text": notice}
+                yield {
+                    "type": "done",
+                    "reasoning": None,
+                    "result": LoopResult(
+                        content=notice,
+                        usage=run_usage,
+                        rounds=rounds,
+                        finish="no_progress",
+                    ),
+                }
+                return
 
     # ---- 消息构造 -------------------------------------------------------
+    # ---- 循环护栏 -------------------------------------------------------
+    @staticmethod
+    def _claims_artifact(content: str | None) -> bool:
+        """模型是否在「声称自己已经把文件落盘」。
+
+        两个条件同时满足才算：强断言动词 + 文件线索（扩展名或 文件/目录/路径）。
+        刻意不把「代码」算线索——「已生成以下代码」是正常聊天输出，不该被追问。
+        """
+        if not content:
+            return False
+        return bool(_ARTIFACT_VERBS.search(content)) and bool(_ARTIFACT_TOKENS.search(content))
+
+    def _has_write_tool(self) -> bool:
+        """当前注册表里有没有能产生文件的工具；没有就不该追问「为什么没落盘」。"""
+        try:
+            names = {item["function"]["name"] for item in self.registry.schemas()}
+        except (KeyError, TypeError, AttributeError):  # pragma: no cover - 注册表结构异常
+            return False
+        return bool(names & WRITE_TOOLS)
+
     @staticmethod
     def _empty_answer_notice(finish_reason: str | None, reasoning: str | None) -> str:
         """模型没产出正文时给用户的人话提示（同时作为 assistant.content 落库）。"""
@@ -702,8 +808,13 @@ class AgentLoop:
         return "\n".join(lines)
 
     # ---- 工具执行 -------------------------------------------------------
-    def _execute_tool_calls(self, tool_calls: Sequence[ToolCall]) -> None:
-        """按 tool_calls 数组顺序逐个执行并逐个回填（顺序与 id 都要对齐）。"""
+    def _execute_tool_calls(self, tool_calls: Sequence[ToolCall]) -> list[str]:
+        """按 tool_calls 数组顺序逐个执行并逐个回填（顺序与 id 都要对齐）。
+
+        返回每条的原始输出，供「原地打转检测」比对——只比较调用不看结果，
+        会把「失败后重试同一调用」误判成打转。
+        """
+        outputs: list[str] = []
         for call in tool_calls:
             if self.on_tool_call is not None:
                 self.on_tool_call(call)
@@ -711,6 +822,7 @@ class AgentLoop:
                 output = self._run_tool(call)
             except ToolArgumentsError as exc:
                 output = f"{ERROR_PREFIX}{exc}"
+            outputs.append(output)
             if self.on_tool_result is not None:
                 self.on_tool_result(call, output)
             if output == APPROVAL_REJECTED_MESSAGE:
@@ -724,6 +836,7 @@ class AgentLoop:
             else:
                 self._logger.info("工具 %s 执行完成（%d 字符）", call.name, len(output))
             self._add_message(self.build_tool_message(call, output))
+        return outputs
 
     def _run_tool(self, call: ToolCall) -> str:
         """执行单个工具；启用审批时先**阻塞**等人工决策。

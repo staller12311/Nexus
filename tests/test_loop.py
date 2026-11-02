@@ -372,7 +372,15 @@ class TestToolRoundLimit:
             tool_result(ToolCall(f"c{i}", "echo", '{"text": "x"}')) for i in range(10)
         ]
         provider = fake_provider(script)
-        loop = AgentLoop(provider, registry, system_prompt="sys", max_tool_rounds=2)
+        # 关掉「原地打转」护栏：本条要测的是轮次上限，而构造的手法恰恰是
+        # 「反复发同一个调用」——那正是护栏要拦的场景，不关会先被它拦下。
+        loop = AgentLoop(
+            provider,
+            registry,
+            system_prompt="sys",
+            max_tool_rounds=2,
+            no_progress_limit=0,
+        )
 
         result = loop.run("无限循环吧")
 
@@ -439,7 +447,7 @@ class TestUsageAccumulation:
                 final("结束", usage=Usage(30, 7, 37)),
             ]
         )
-        loop = AgentLoop(provider, registry)
+        loop = AgentLoop(provider, registry, no_progress_limit=0)
         result = loop.run("三轮")
 
         assert result.rounds == 2

@@ -151,6 +151,11 @@ class AgentConfig(_StrictModel):
     #: 分步交付纪律：要求模型每轮先给一小段进展/计划再调工具，而不是一次吐出全部成果。
     #: 这直接决定「思考会不会吃光输出预算」——要求越大，推理模型想得越久。
     stepwise_delivery: bool = True
+    #: 连续多少轮出现「完全相同的工具调用 + 完全相同的结果」就判定为原地打转并停止
+    #: （0 = 关闭）。用「调用+结果」双相同而不是只看调用，是为了不误杀失败重试。
+    no_progress_limit: int = Field(default=2, ge=0, le=10)
+    #: 模型声称「已创建/已写入文件」但本轮没有任何写入成功时，追问一次让它真正落盘
+    verify_artifact_claims: bool = True
 
     def system_prompt_text(self, config_dir: Path) -> str:
         """优先读取 system_prompt_file；文件不存在时退回 system_prompt。"""
