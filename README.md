@@ -392,7 +392,7 @@ start.bat
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-当前 **395 passed / 2 skipped**；前端 **40 个测试文件 / 219 passed + 6 skipped**。
+当前 **397 passed / 2 skipped**；前端 **40 个测试文件 / 219 passed + 6 skipped**。
 
 完整测试范围、交付清单、已知待办与已清偿技术债见 [docs/development.md](docs/development.md)；新增工具（5 步 + 可运行模板）见 [docs/tool-development.md](docs/tool-development.md)。
 

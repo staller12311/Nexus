@@ -363,6 +363,32 @@ def test_loop_config_separates_session_and_global_documents(api) -> None:
     assert any(line.startswith("【全局知识库文档】") for line in other_lines)
 
 
+def test_loop_config_injects_stepwise_delivery(api) -> None:
+    """系统提示词必须带「分步交付」纪律。
+
+    这是「思考几万字、正文为空」的结构性对策：模型一次性被要求产出成套成果时，
+    推理阶段会吃掉全部 completion 预算；拆成「每轮一小步 + 先汇报再动手」才有上界。
+    """
+    _client, service, _config = api
+    prompt = service._loop_config(None).system_prompt_text()
+
+    assert "【分步交付纪律（重要）】" in prompt
+    assert "不超过 120 字" in prompt, "每轮汇报要有字数上界"
+    assert "再调用工具" in prompt, "汇报必须发生在调工具之前"
+    assert "300 行" in prompt, "写入要分块，避免单次巨量输出"
+
+
+def test_stepwise_delivery_can_be_turned_off(api) -> None:
+    """关掉开关后不该再往提示词里塞这段（老用户自定义提示词可能不希望被加料）。"""
+    _client, service, config = api
+    quiet_config = config.model_copy(
+        update={"agent": config.agent.model_copy(update={"stepwise_delivery": False})}
+    )
+    quiet = AgentService(quiet_config)
+
+    assert "【分步交付纪律（重要）】" not in quiet._loop_config(None).system_prompt_text()
+
+
 def test_search_tool_is_bound_to_current_session(api) -> None:
     """检索工具按会话绑定：能查到自己 + 全局，查不到别的会话。
 

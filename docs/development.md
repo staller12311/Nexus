@@ -26,7 +26,7 @@
 > 必须用 `python -m pytest`（而不是裸 `pytest`）：测试通过包名 `agent.*` 导入，
 > 需要仓库根目录在 `sys.path` 上，`python -m` 会把当前目录加进去。
 
-当前全量：**395 passed / 2 skipped**（2 条 skip 是本机无法创建**文件**符号链接；
+当前全量：**397 passed / 2 skipped**（2 条 skip 是本机无法创建**文件**符号链接；
 目录场景已能用 junction 回退，见第 18 条）。
 后端用例：`tests/test_backend_service.py` 覆盖工作区 / 知识库 / 自定义模型 / 用量统计 / 审批接口；
 本轮新增上下文管理 4 条（工具参数压缩、80% 摘要替换、摘要失败回退、1M 窗口识别），
