@@ -268,8 +268,8 @@ python -m venv .venv
 
 ```text
 frontend/src-tauri/target/release/bundle/nsis/
-├── Nexus 智枢_1.2.1_x64-personal-setup.exe       # 内含完整 venv，自用，不要外发
-└── Nexus 智枢_1.2.1_x64-distribution-setup.exe   # 约 28 MB，可分发
+├── Nexus 智枢_1.2.2_x64-personal-setup.exe       # 内含完整 venv，自用，不要外发
+└── Nexus 智枢_1.2.2_x64-distribution-setup.exe   # 约 28 MB，可分发
 ```
 
 | | Personal（自用） | Distribution（分发） |

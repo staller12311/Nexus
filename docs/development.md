@@ -89,8 +89,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1 -SkipInstal
 
 两个安装包：
 
-- `Nexus 智枢_1.2.1_x64-personal-setup.exe`：包含本机 `.env`、`config.yaml` 和完整 `.venv`，`run_python_code` 使用 venv；只供自己用。
-- `Nexus 智枢_1.2.1_x64-distribution-setup.exe`：使用 `config.example.yaml` + 空 `.env` 模板 + 便携 Python，不含 venv，适合分发。
+- `Nexus 智枢_1.2.2_x64-personal-setup.exe`：包含本机 `.env`、`config.yaml` 和完整 `.venv`，`run_python_code` 使用 venv；只供自己用。
+- `Nexus 智枢_1.2.2_x64-distribution-setup.exe`：使用 `config.example.yaml` + 空 `.env` 模板 + 便携 Python，不含 venv，适合分发。
 
 产物：
 
