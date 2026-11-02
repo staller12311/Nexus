@@ -162,7 +162,11 @@ sequenceDiagram
 *(纯代码生成 2100+ 行 Three.js，未使用任何外部 3D 模型文件)*
 
 ###  对话与工具调用界面
-<p align="center"><a href="./assets/ui-chat.png"><img src="./assets/ui-chat.png" alt="Nexus 智枢 对话界面" width="100%" /></a></p>
+<p align="center"><a href="./assets/ui-chat.png"><img src="./assets/ui-chat.png" alt="Nexus 智枢 对话界面：流式回答、思考链与工具调用卡" width="100%" /></a></p>
+
+###  人工审批：危险操作先挂起，确认后才执行
+<p align="center"><a href="./assets/ui-approval.png"><img src="./assets/ui-approval.png" alt="Nexus 智枢 审批卡片：危险工具调用前挂起，人工同意或拒绝" width="100%" /></a></p>
+*(`run_python_code` / `delete_path` / `run_shell` 会挂起等待确认；默认关闭，配置 `tools.require_approval: true` 开启)*
 
 ## 项目结构
 
@@ -186,7 +190,7 @@ nexus-zhishu/
 ├── examples/
 │   └── standalone_agent.py   # 只用 agent 包跑一次对话，不依赖 backend（当模板用）
 ├── docker/                   # Nginx 配置与后端容器入口
-├── assets/                   # README 截图（ui-chat / ui-approval）
+├── assets/                   # README 截图（ui-chat / ui-approval）与动图演示
 ├── docs/                     # 深度文档
 │   ├── whitepaper.md         # 技术白皮书
 │   ├── design-decisions.md   # 72 条设计决策
