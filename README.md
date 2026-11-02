@@ -28,6 +28,7 @@
 ## 为什么做这个？
 
 >  **深度阅读**：[Nexus 智枢 技术白皮书 (Whitepaper)](./docs/whitepaper.md) —— 记录了从 0 到 1 的架构演进与 72 条核心设计决策。
+> 
 当前市面上的 AI Agent（如 Coze、Dify）多为云端 SaaS，企业核心数据面临泄露风险；而基于 LangChain 的开源框架往往抽象过重，遇到复杂 Bug 难以调试。
 
 **Nexus 智枢** 是一个**极致轻量、本地优先**的 Agent 中台。我们纯手写了底层 Agent Loop，让你在自己的电脑或服务器上安全地读写文件、执行 Python、检索私有知识库。接本地 Ollama / vLLM 时可完全离线运行；接云模型时仅推理请求出网。
