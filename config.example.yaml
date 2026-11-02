@@ -50,6 +50,9 @@ agent:
   max_history_messages: 40      # 未启用摘要时的兜底裁剪上限（启用摘要后不再按条数砍历史）
   context_summary_trigger: 0.8  # 上下文占用 ≥80% 时触发历史摘要压缩
   context_summary_messages: 10  # 每次摘要压缩最旧的 10 条消息
+  # 推理模型把输出预算全烧在思考上（正文为空）时，追加「别再想了、直接输出」后重跑一次。
+  # 0 = 不补救，直接返回提示。只在 finish_reason=length 时触发。
+  empty_answer_retries: 1
   request_timeout: 60
   max_retries: 3
 

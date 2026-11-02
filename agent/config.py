@@ -145,6 +145,9 @@ class AgentConfig(_StrictModel):
     context_summary_messages: int = Field(default=10, ge=2)
     request_timeout: float = Field(default=60, gt=0)
     max_retries: int = Field(default=3, ge=0)
+    #: 推理模型把输出预算全烧在思考上时，补救重试的次数
+    #: （追加「直接输出」提醒后重跑；0 = 不补救，直接给提示）
+    empty_answer_retries: int = Field(default=1, ge=0, le=3)
 
     def system_prompt_text(self, config_dir: Path) -> str:
         """优先读取 system_prompt_file；文件不存在时退回 system_prompt。"""

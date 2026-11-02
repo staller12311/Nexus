@@ -104,6 +104,7 @@ def test_example_config_keeps_field_names() -> None:
         "max_history_messages",
         "context_summary_trigger",
         "context_summary_messages",
+        "empty_answer_retries",
         "request_timeout",
         "max_retries",
     }

@@ -49,6 +49,12 @@ INVALID_ARGUMENTS_PLACEHOLDER = "{}"
 #: 本地拦截后回灌给模型的错误文本（模型看到后可在同一轮内重新生成）。
 INVALID_ARGUMENTS_MESSAGE = "参数不是合法 JSON，请重新生成（本次工具未执行）。"
 
+#: 思考把输出预算吃光时的补救指令（以 system 消息追加，避免污染用户可见的对话气泡）
+EMPTY_ANSWER_NUDGE = (
+    "上一轮的思考过程已经耗尽本轮输出预算，还没有写出任何正文。"
+    "请不要再展开推理过程，直接给出最终结果；内容较长时先给结论，再分点补充细节。"
+)
+
 #: 历史上这些工具的 arguments 超过阈值后压缩成占位 JSON（大段代码已落盘，无需在历史里回显）
 ARGUMENT_COMPACT_TOOLS = frozenset({"write_file", "run_python_code"})
 ARGUMENT_COMPACT_THRESHOLD = 2000
@@ -170,6 +176,7 @@ class AgentLoop:
         summarizer: Callable[[str], str | None] | None = None,
         context_summary_trigger: float = 0.8,
         context_summary_messages: int = 10,
+        empty_answer_retries: int = 1,
         request_transform: Callable[[list[dict[str, Any]]], list[dict[str, Any]]] | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
@@ -177,6 +184,8 @@ class AgentLoop:
         self.registry = registry
         self.max_tool_rounds = max(1, int(max_tool_rounds))
         self.max_history_messages = max(1, int(max_history_messages))
+        #: 思考把输出预算吃光时，最多补救几次（0 = 不补救，直接给提示）
+        self.empty_answer_retries = max(0, min(3, int(empty_answer_retries)))
         self.storage = storage
         self.session_id = session_id
         self.on_tool_call = on_tool_call
@@ -252,6 +261,7 @@ class AgentLoop:
             summarizer=summarizer,
             context_summary_trigger=config.agent.context_summary_trigger,
             context_summary_messages=config.agent.context_summary_messages,
+            empty_answer_retries=config.agent.empty_answer_retries,
             request_transform=request_transform,
         )
 
@@ -325,6 +335,7 @@ class AgentLoop:
 
         run_usage = Usage()
         rounds = 0
+        empty_retries = 0
         while True:
             # 上限判定：已执行完 rounds 轮工具、正要从这里发起第 rounds+1 轮请求
             if rounds >= self.max_tool_rounds:
@@ -382,6 +393,20 @@ class AgentLoop:
             # （OpenAI 协议要求 content 或 tool_calls 至少有一个），也不能让整轮 500。
             # 做法：合成一条人话提示作为正文，既让用户知道发生了什么，也让历史保持合法。
             if content is None and not tool_calls:
+                # 推理模型可能把整个输出预算都花在思考上：实测把 max_tokens 从 8192 调到 16384，
+                # 思考量也跟着涨到 5 万多字，正文依然是空的 —— 单纯调大预算解决不了。
+                # 所以先做一次「别再想了，直接输出」的补救：追加一条 system 提醒后重跑。
+                if finish_reason == "length" and empty_retries < self.empty_answer_retries:
+                    empty_retries += 1
+                    notice = (
+                        "模型把本轮输出预算全用在思考上了"
+                        f"（思考 {len(event_reasoning or '')} 字），正在要求它直接输出结论…"
+                    )
+                    self._logger.warning(notice)
+                    yield {"type": "notice", "text": notice}
+                    self._add_message({"role": "system", "content": EMPTY_ANSWER_NUDGE})
+                    continue
+
                 content = self._empty_answer_notice(finish_reason, event_reasoning)
                 self._logger.warning(
                     "模型本轮没有产出正文（finish_reason=%s，思考 %d 字），已用提示语代替",
@@ -422,8 +447,12 @@ class AgentLoop:
             length = len(reasoning or "")
             thinking = f"（本轮思考了 {length} 字）" if length else ""
             return (
-                f"模型在思考阶段就用完了 max_tokens 配额{thinking}，没有产出正文。"
-                "请调大该模型的 max_tokens（或在模型管理里换一个上下文/输出预算更大的模型）后重试。"
+                f"模型在思考阶段就用完了输出预算{thinking}，没有产出正文。"
+                "注意「1M / 128K」说的是上下文窗口（能读多少），不是能写多少；"
+                "输出上限由 max_tokens 决定，而推理模型的思考与正文共用这一个额度，"
+                "所以只调大窗口并不能解决。"
+                "建议在「模型管理」里把 max_tokens 调到 32768 以上（按厂商实际上限），"
+                "或者换一个思考更短的模型后重试。"
             )
         return "模型这一轮没有返回正文。可以重试一次，或者换一个模型试试。"
 
