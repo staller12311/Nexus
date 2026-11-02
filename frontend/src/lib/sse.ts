@@ -6,6 +6,8 @@
  * 直接对半截字符串 `JSON.parse` 会抛错。
  */
 
+import { authHeaders } from './auth'
+
 export type ServerEvent = { type: string; [key: string]: unknown }
 
 /** 从一帧（已去掉尾部空行）里取出 `data:` 后面的负载；不是 data 帧则返回 null。 */
@@ -94,7 +96,11 @@ async function postStream(
   const { baseUrl = '', signal } = options
   const response = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+      ...authHeaders(),
+    },
     body: JSON.stringify(body),
     ...(signal ? { signal } : {}),
   })

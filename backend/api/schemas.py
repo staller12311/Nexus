@@ -28,6 +28,18 @@ class CustomModelIn(BaseModel):
     base_url: str = Field(description="OpenAI 兼容端点，尾部斜杠会被自动去掉")
     model: str = Field(description="上游真实 model id")
     api_key: str = Field(description="完整密钥；只存库，绝不回传")
+    max_tokens: int | None = Field(
+        default=None,
+        ge=1,
+        le=2000000,
+        description="输出预算（推理模型的思考与正文共用）。留空用默认 8192；长思考模型建议 16384+",
+    )
+    context_window: int | None = Field(
+        default=None,
+        ge=1024,
+        le=10000000,
+        description="上游上下文窗口。留空按模型名推断（已知 1M 模型自动识别）",
+    )
 
 
 class CustomModelOut(BaseModel):
@@ -38,6 +50,9 @@ class CustomModelOut(BaseModel):
     api_key_masked: str
     created_at: str
     updated_at: str
+    #: 实际生效的输出预算与上下文窗口（含默认值补齐），前端状态栏直接显示
+    max_tokens: int | None = None
+    context_window: int | None = None
 
 
 class CustomModelsOut(BaseModel):

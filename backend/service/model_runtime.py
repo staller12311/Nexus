@@ -16,11 +16,16 @@ from agent.provider import Provider
 
 from .custom_models import CustomModel
 
-#: 自定义模型不填这些参数，用一组保守默认值（README 第 44 条）
+#: 自定义模型不填这些参数时的默认值。
+#:
+#: ``max_tokens`` 从 2048 提到 8192：对推理模型来说「思考」和「正文」共用这一个预算，
+#: 2048 会让长思考直接把配额烧光、正文为空（实测思考 7000+ 字后什么都没输出）。
+#: ``context_window`` 从 32768 提到 128K：32768 会让摘要压缩过早触发，读长文档不够用；
+#: 已知 1M 的模型另有按模型名推断的逻辑（``context_window_for``），这里只是兜底。
 CUSTOM_DEFAULTS: dict[str, float | int] = {
     "temperature": 0.7,
-    "max_tokens": 2048,
-    "context_window": 32768,
+    "max_tokens": 8192,
+    "context_window": 131072,
 }
 
 
@@ -59,12 +64,19 @@ def build_custom_provider(
 
     ``request_timeout`` / ``max_retries`` 可覆盖：起标题那种"失败就降级"的场景要用短超时 + 不重试。
     """
+    runtime = dict(CUSTOM_DEFAULTS)
+    # 用户显式填了就用用户的：不同厂商对输出上限的约束差别很大，只能由用户负责
+    if model.max_tokens:
+        runtime["max_tokens"] = int(model.max_tokens)
+    if model.context_window:
+        runtime["context_window"] = int(model.context_window)
+
     model_config = DbModelConfig(
         base_url=model.base_url,
         model=model.model,
         api_key_env="(自定义)",  # 仅用于 describe() 展示，不读这个变量
         stored_api_key=model.api_key,
-        **CUSTOM_DEFAULTS,
+        **runtime,
     )
     # 万一别处（异常栈、请求回显）把密钥打进日志，会被替换成 ***
     register_secret(model.api_key)

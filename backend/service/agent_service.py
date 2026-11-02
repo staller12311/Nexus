@@ -57,11 +57,12 @@ logger = logging.getLogger("agent.web")
 DEFAULT_SESSION_LIMIT = 20
 #: 自定义模型没有显式上下文配置时的保守默认值（128K）
 DEFAULT_CONTEXT_WINDOW = 131072
-#: 官方文档确认 1M 上下文的模型（DeepSeek-V4 系列 / Qwen3.8-Flash 等）
+#: 官方文档确认 1M 上下文的模型（DeepSeek-V4 系列 / Qwen3.8-Flash 等）。
+#: 2026-11 起 DeepSeek 旧名 deepseek-chat / deepseek-reasoner 已下线，
+#: 现行模型为 deepseek-flash 与 deepseek-v4-pro，两者均为 1M 窗口。
 _ONE_MILLION_PREFIXES = (
     "deepseek-v4",
-    "deepseek-chat",
-    "deepseek-reasoner",
+    "deepseek-flash",
     "qwen3.8",
     "qwen3.7",
     "qwen-turbo",
@@ -311,12 +312,26 @@ class AgentService:
         return self.custom_models.list()
 
     def add_custom_model(
-        self, name: str, base_url: str, model: str, api_key: str
+        self,
+        name: str,
+        base_url: str,
+        model: str,
+        api_key: str,
+        *,
+        max_tokens: int | None = None,
+        context_window: int | None = None,
     ) -> CustomModel:
         clean = (name or "").strip()
         if clean in self.config.models:
             raise DuplicateCustomModel(f"「{clean}」是 config.yaml 里的内置模型名，不能重复")
-        return self.custom_models.add(clean, base_url, model, api_key)
+        return self.custom_models.add(
+            clean,
+            base_url,
+            model,
+            api_key,
+            max_tokens=max_tokens,
+            context_window=context_window,
+        )
 
     def delete_custom_model(self, name: str) -> dict[str, Any]:
         target = self.custom_models.get(name)
@@ -333,6 +348,9 @@ class AgentService:
         if model_config is not None:
             return int(model_config.context_window)
         custom = self.custom_models.get(model_name)
+        if custom is not None and custom.context_window:
+            # 用户显式填了就以用户为准（各厂商窗口差异大，猜不如问）
+            return int(custom.context_window)
         model_id = (custom.model if custom else model_name).lower()
         if any(prefix in model_id for prefix in _ONE_MILLION_PREFIXES):
             return 1_000_000

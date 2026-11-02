@@ -32,8 +32,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
 );
 """
 
-#: 兜底黑名单：即使环境变量缺失也要挡住这些众所周知的系统目录（小写、反斜杠统一）
-FALLBACK_DENY = (
+#: 兜底黑名单（Windows）：即使环境变量缺失也要挡住这些众所周知的系统目录（小写）
+_WINDOWS_FALLBACK_DENY = (
     r"c:\windows",
     r"c:\program files",
     r"c:\program files (x86)",
@@ -45,6 +45,41 @@ FALLBACK_DENY = (
     r"c:\perflogs",
     r"c:\windows.old",
 )
+
+#: 兜底黑名单（POSIX）：Docker / Linux 部署时这才是真正的攻击面。
+#: 只拦「整棵树都不该当工作区」的系统目录，不拦 /srv、/opt 这类常见的自建服务目录。
+_POSIX_FALLBACK_DENY = (
+    "/etc",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/lib",
+    "/lib64",
+    "/boot",
+    "/dev",
+    "/proc",
+    "/sys",
+    "/root",
+    "/run",
+    "/var",
+    "/snap",
+)
+
+
+def _fallback_deny() -> tuple[str, ...]:
+    """按运行平台返回兜底黑名单。
+
+    为什么按平台分：Windows 上 ``Path("/etc")`` 会被解析成「当前盘符下的 ``\\etc``」，
+    把 POSIX 条目无条件加进去会误伤 ``D:\\etc`` 这种完全正常的用户目录；
+    反过来在 Linux 上 Windows 条目解析出来是 ``/c:/windows`` 这种无意义路径，也只是白占位。
+    """
+    if os.name == "nt":
+        return _WINDOWS_FALLBACK_DENY
+    return _WINDOWS_FALLBACK_DENY + _POSIX_FALLBACK_DENY
+
+
+#: 兼容既有引用（导入期按当前平台求值）
+FALLBACK_DENY = _fallback_deny()
 
 #: 用户主目录下这些子目录一律不许当工作区（凭据 / 应用数据 / 密码库）
 SENSITIVE_HOME_SUBDIRS = (
@@ -144,7 +179,7 @@ def _protected_roots() -> list[Path]:
         value = os.environ.get(env_name)
         if value:
             candidates.append(Path(value))
-    candidates.extend(Path(raw) for raw in FALLBACK_DENY)
+    candidates.extend(Path(raw) for raw in _fallback_deny())
 
     protected: list[Path] = []
     for candidate in candidates:

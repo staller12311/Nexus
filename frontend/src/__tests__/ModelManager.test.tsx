@@ -158,6 +158,30 @@ describe('模型管理面板', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('填了输出预算与上下文窗口时一并提交，留空则不提交该字段', async () => {
+    const user = userEvent.setup()
+    useChatStore.getState().setModels([builtin('deepseek', true)])
+    const calls = stubBackend([builtin('deepseek', true)])
+
+    render(<Composer />)
+    await user.click(screen.getByLabelText('模型管理'))
+
+    await user.type(screen.getByLabelText('模型名称'), 'reasoner')
+    await user.type(screen.getByLabelText('Base URL'), 'https://api.example.com/v1')
+    await user.type(screen.getByLabelText('Model ID'), 'vendor-x')
+    await user.type(screen.getByLabelText('API Key'), 'sk-key-1234567890')
+    await user.type(screen.getByLabelText('max_tokens'), '16384')
+    await user.type(screen.getByLabelText('上下文窗口'), '1000000')
+    await user.click(screen.getByRole('button', { name: /保存/ }))
+
+    await waitFor(() => expect(useChatStore.getState().model).toBe('reasoner'))
+    const post = calls.find((call) => call.method === 'POST')
+    const body = JSON.parse(post!.body!)
+    // 这两个字段就是「思考别把正文挤掉」与「换成 1M 窗口」的开关
+    expect(body.max_tokens).toBe(16384)
+    expect(body.context_window).toBe(1000000)
+  })
+
   it('删除需二次确认；删掉当前选中模型后回退到默认模型', async () => {
     const user = userEvent.setup()
     useChatStore.getState().setModels([builtin('deepseek', true), custom('moonshot')])

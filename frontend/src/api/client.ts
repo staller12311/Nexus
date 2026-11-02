@@ -14,16 +14,31 @@ import type {
   WorkspaceInfo,
 } from '../types'
 import { apiBase } from '../lib/base'
+import { askAuthTokenOnce, authHeaders } from '../lib/auth'
+
+/** 合并请求头：默认 JSON，再叠访问令牌，最后让调用方覆盖（如 X-Nexus-Session）。 */
+function mergedHeaders(extra?: HeadersInit): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    ...authHeaders(),
+    ...((extra as Record<string, string>) ?? {}),
+  }
+}
 
 /**
  * 所有请求都走 /api/*（默认相对路径，由 vite.config.ts 的 proxy 转发到后端），
  * 这样前端代码里不会出现 http://127.0.0.1:8000 这样的硬编码地址。
  */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBase()}/api${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  })
+  const url = `${apiBase()}/api${path}`
+  const send = () =>
+    fetch(url, { ...init, headers: mergedHeaders(init?.headers) })
+
+  let response = await send()
+  // 401 = 后端启用了访问令牌：问一次令牌后重试，拿不到就把可操作的提示抛出去
+  if (response.status === 401 && askAuthTokenOnce()) {
+    response = await send()
+  }
   if (!response.ok) {
     let detail = `HTTP ${response.status}`
     try {
@@ -55,6 +70,8 @@ function uploadFile<T>(
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${apiBase()}/api${path}`)
     if (sessionId) xhr.setRequestHeader('X-Nexus-Session', sessionId)
+    const token = authHeaders().Authorization
+    if (token) xhr.setRequestHeader('Authorization', token)
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && onProgress) {
         onProgress(Math.round((event.loaded / event.total) * 100))

@@ -27,9 +27,9 @@
 
 ## 为什么做这个？
 
-当前市面上的 AI Agent（如 Coze、Dify）多为云端 SaaS，企业核心数据面临泄露风险；而基于 LangChain 的开源框架往往抽象过重，遇到复杂 Bug 难以调试。
+当前市面上的 AI Agent 大致分两类：平台型（如 Coze、Dify）能力强、开箱即用，但内核被封装，遇到复杂问题难以下钻——**Dify 支持自托管，数据可以留在自己机器上，这一点不该被抹掉**；框架型（如 LangChain）灵活，但抽象层重，调试要先读框架源码。
 
-**Nexus 智枢** 是一个**极致轻量、本地优先**的 Agent 中台。我们纯手写了底层 Agent Loop，让你在自己的电脑或服务器上安全地读写文件、执行 Python、检索私有知识库。接本地 Ollama / vLLM 时可完全离线运行；接云模型时仅推理请求出网。
+**Nexus 智枢** 取的是第三条路：**极致轻量的纯手写 Agent 内核 + 原生跨平台桌面客户端 + 单文件 SQLite 部署**。不需要理解任何框架抽象，出了问题能直接定位到某一轮的请求体；接本地 Ollama / vLLM 时可完全离线运行，接云模型时仅推理请求出网。
 
 ## 它能帮你做什么？
 
@@ -41,12 +41,15 @@
 
 直接看差异：
 
-| 维度 | 云端 SaaS (如 Coze/Dify) | 纯框架 (如 LangChain) | Nexus 智枢 |
+| 维度 | 平台型（Coze / Dify 等） | 框架型（LangChain 等） | Nexus 智枢 |
 |---|---|---|---|
-| 数据隐私 | 数据需上云，有泄露风险 | 需自行搭建，缺乏安全沙箱 | 本地部署；接本地模型可全离线 |
-| 执行能力 | 难以直接操作本地文件 | 需大量开发适配器 | 原生支持文件 CRUD、Python 执行 |
-| 安全控制 | 依赖平台规则 | 几乎没有防护 | 路径越界拦截、HITL 审批 |
-| 底层可控性 | 黑盒调包 | 抽象过重，难以 Debug | 纯手写 Agent Loop，无黑盒 |
+| 部署形态 | 云端 SaaS 为主；Dify 等支持自托管，但需 Docker + 若干依赖组件 | 无成品，需自行组装服务与前端 | 单文件 SQLite + 单进程；Docker 一条命令，或桌面版双击即用 |
+| 数据落地 | 自托管方案数据可控；云端方案需自行评估合规 | 取决于自建方式 | 默认全部本地；接本地模型可完全离线 |
+| 内核可控性 | 平台封装，需要时难以下钻改控制流 | 抽象较重，排障需读框架源码 | 纯手写 Agent Loop（784 行），无黑盒，可定位到单轮请求 |
+| 客户端形态 | 以 Web 为主 | 需自建 | 原生桌面客户端（Tauri v2）+ Web |
+| 安全控制 | 依赖平台规则 | 需自建 | 路径越界拦截、HITL 审批、默认仅回环可访问 |
+
+> 说明：这张表只比形态与取舍，不比功能多少——Coze / Dify 的插件生态、可视化编排、团队协作能力都明显强于本项目，它们解决的是"让更多人快速搭起来"，本项目解决的是"让懂代码的人完全掌控内核"。
 
 ## 系统架构
 
@@ -216,6 +219,17 @@ docker compose up -d          # 首次构建约 3–5 分钟
 打开 <http://localhost:8080>。`data/`（SQLite 会话、日志）与 `workspace/`（Agent 文件沙箱）
 通过 volume 挂载到宿主机；Nginx 负责静态站点与 `/api` 反代，SSE 已关闭缓冲。
 
+**访问控制（默认收紧）**
+
+`docker-compose.yml` 里的端口映射是 `127.0.0.1:8080:80`，**默认只有本机能访问**。后端还有一层独立判断：
+
+| 配置 | 行为 |
+|---|---|
+| `server.auth_token` 留空（默认） | 只接受回环地址访问，其他来源一律 403 |
+| 设置 `server.auth_token` | 所有 `/api` 请求必须带 `Authorization: Bearer <token>`，否则 401 |
+
+需要从其他机器访问时，两步都要改：在 `config.yaml` 里设令牌（≥16 字符，`python -c "import secrets;print(secrets.token_urlsafe(32))"` 生成），再把 compose 端口改成 `0.0.0.0:8080:80`。**只改端口不设令牌是最危险的做法**——那等于把一个能执行代码的 Agent 挂到网络上。
+
 > 安全提示：本项目默认面向**完全信任的本地开发环境**（`config.yaml` 中 `require_approval: false`）。
 > 如果 workspace 会处理他人代码或不可信输入，请把 `tools.require_approval` 改为 `true`，
 > 危险工具（`run_python_code` / `delete_path` / `run_shell`）将重新走人工审批。
@@ -252,8 +266,8 @@ python -m venv .venv
 
 ```text
 frontend/src-tauri/target/release/bundle/nsis/
-├── Nexus 智枢_1.2.0_x64-personal-setup.exe       # 内含完整 venv，自用，不要外发
-└── Nexus 智枢_1.2.0_x64-distribution-setup.exe   # 约 28 MB，可分发
+├── Nexus 智枢_1.2.1_x64-personal-setup.exe       # 内含完整 venv，自用，不要外发
+└── Nexus 智枢_1.2.1_x64-distribution-setup.exe   # 约 28 MB，可分发
 ```
 
 | | Personal（自用） | Distribution（分发） |
@@ -376,7 +390,7 @@ start.bat
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-当前 **364 passed / 2 skipped**；前端 **40 个测试文件 / 216 passed + 6 skipped**。
+当前 **388 passed / 2 skipped**；前端 **40 个测试文件 / 219 passed + 6 skipped**。
 
 完整测试范围、交付清单、已知待办与已清偿技术债见 [docs/development.md](docs/development.md)；新增工具（5 步 + 可运行模板）见 [docs/tool-development.md](docs/tool-development.md)。
 

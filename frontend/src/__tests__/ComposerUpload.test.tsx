@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChatArea } from '../components/ChatArea'
 import { Composer } from '../components/Composer'
+import { KnowledgePanel } from '../components/KnowledgePanel'
 import { useChatStore } from '../store/chatStore'
 import type { KnowledgeDoc } from '../types'
 
@@ -286,5 +287,45 @@ describe('输入框上传文档（回形针 + 聊天卡片）', () => {
     await waitFor(() => expect(screen.getByText('文档已加入知识库')).toBeInTheDocument())
     await user.click(screen.getByLabelText('关闭上传卡片'))
     expect(screen.queryByText('文档已加入知识库')).not.toBeInTheDocument()
+  })
+
+  // ---- 会话归属可见性（用户反馈：两段对话各自传的文件都显示"本会话"，分不清谁的）----
+  it('输入框上方只列当前会话的文档，别的会话与全局文档不混进来', async () => {
+    stubFetch([
+      { ...kbDoc('本会话纪要.docx'), session_id: 's-cur' },
+      { ...kbDoc('另一段对话的合同.pdf'), session_id: 's-other' },
+      kbDoc('全局财报.pdf'),
+    ])
+    useChatStore.setState({ sessionId: 's-cur' })
+    await useChatStore.getState().loadKb()
+    renderComposer()
+
+    const chips = await screen.findByTestId('kb-own-chips')
+    expect(chips).toHaveTextContent('本会话纪要.docx')
+    expect(chips).not.toHaveTextContent('另一段对话的合同.pdf')
+    expect(chips).not.toHaveTextContent('全局财报.pdf')
+  })
+
+  it('知识库面板按归属分组，其他会话的文档带 session 前缀', async () => {
+    stubFetch([
+      { ...kbDoc('本会话纪要.docx'), session_id: 's-cur' },
+      { ...kbDoc('另一段对话的合同.pdf'), session_id: 's-other' },
+      kbDoc('全局财报.pdf'),
+    ])
+    useChatStore.setState({ sessionId: 's-cur' })
+    await useChatStore.getState().loadKb()
+    render(<KnowledgePanel />)
+
+    const own = await screen.findByTestId('kb-group-own')
+    expect(own).toHaveTextContent('本会话（1）')
+    expect(own).toHaveTextContent('本会话纪要.docx')
+
+    const others = screen.getByTestId('kb-group-others')
+    expect(others).toHaveTextContent('其他会话（1）')
+    // 关键断言：这段前缀是「分不清哪个文件属于哪段对话」的修复点
+    expect(others).toHaveTextContent('其他会话 s-othe')
+
+    const global = screen.getByTestId('kb-group-global')
+    expect(global).toHaveTextContent('全局（所有会话可见）（1）')
   })
 })

@@ -35,8 +35,11 @@ services:
       dockerfile: Dockerfile
       target: web
     image: nexus-zhishu-web:latest
+    # 只绑回环：默认只允许本机访问，避免把「能执行代码的 Agent」直接暴露到公网/局域网。
+    # 需要对外提供服务时，先给 config.yaml 配 server.auth_token，再把这里改成
+    # "${NEXUS_BIND:-127.0.0.1}:8080:80" 并显式设置 NEXUS_BIND。
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     depends_on:
       backend:
         condition: service_healthy

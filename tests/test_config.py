@@ -91,7 +91,10 @@ def test_example_config_keeps_field_names() -> None:
         "tools",
         "storage",
         "logging",
+        "server",
     }
+    # 访问控制段：只允许这两个字段，多一个少一个都要显式改这里
+    assert set(raw["server"]) == {"auth_token"}
     assert set(raw["agent"]) == {
         "system_prompt_file",
         "system_prompt",

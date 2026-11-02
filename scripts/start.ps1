@@ -12,9 +12,9 @@ $sitePackages = Join-Path $root '.venv\Lib\site-packages'
 $dataDir = Join-Path $root 'data'
 $frontendDir = Join-Path $root 'frontend'
 
-function Write-Info([string]$message) { Write-Host "[MyAi] $message" -ForegroundColor Cyan }
-function Write-Warn([string]$message) { Write-Host "[MyAi] $message" -ForegroundColor Yellow }
-function Write-Err([string]$message) { Write-Host "[MyAi] $message" -ForegroundColor Red }
+function Write-Info([string]$message) { Write-Host "[Nexus] $message" -ForegroundColor Cyan }
+function Write-Warn([string]$message) { Write-Host "[Nexus] $message" -ForegroundColor Yellow }
+function Write-Err([string]$message) { Write-Host "[Nexus] $message" -ForegroundColor Red }
 
 if (-not (Test-Path -LiteralPath $dataDir)) {
     New-Item -ItemType Directory -Path $dataDir -Force | Out-Null

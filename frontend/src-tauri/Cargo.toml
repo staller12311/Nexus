@@ -1,6 +1,6 @@
 [package]
 name = "nexus-desktop"
-version = "1.2.0"
+version = "1.2.1"
 description = "Nexus 智枢 desktop shell"
 authors = ["Stellar"]
 license = "Apache-2.0"

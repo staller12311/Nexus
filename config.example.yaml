@@ -9,10 +9,14 @@ default_model: deepseek
 models:
   deepseek:
     base_url: https://api.deepseek.com/v1
-    model: deepseek-chat
+    # 2026-11 起官方仅提供 deepseek-flash（快速）与 deepseek-v4-pro（旗舰）；
+    # 旧的 deepseek-chat / deepseek-reasoner 已下线，填了会直接 404。
+    model: deepseek-flash
     api_key_env: DEEPSEEK_API_KEY
     temperature: 0.7
-    max_tokens: 4096           # 思维链也算在 completion 里：写长代码建议调到 8192
+    # 推理模型的「思考」与「正文」共用这一个预算：调太小会出现
+    # “思考阶段就用完 max_tokens、没有产出正文”。写长代码建议 16384。
+    max_tokens: 8192
     # DeepSeek 官方文档（api-docs.deepseek.com/zh-cn/quick_start/pricing）：上下文 1M
     context_window: 1000000
   qwen3-vl-plus:
@@ -88,6 +92,14 @@ tools:
 
 storage:
   db_path: ./data/sessions.db
+
+server:
+  # HTTP 服务的访问控制（只影响后端，CLI 不读这一段）。
+  # 留空 = 只允许本机（回环地址）访问，这是默认的安全姿态。
+  # 填了令牌 = 所有 /api 请求必须带 Authorization: Bearer <token>，可从其他主机访问。
+  # 生成令牌：python -c "import secrets;print(secrets.token_urlsafe(32))"
+  # 注意：令牌至少 16 字符，太短的会在配置校验阶段直接报错。
+  auth_token: ""
 
 logging:
   level: INFO

@@ -276,9 +276,9 @@ sequenceDiagram
 
 ### 3.9 工程验证
 
-- 后端 **364 passed / 2 skipped**：涵盖主循环、Provider、存储、工具安全、配置、CLI、Web API、
+- 后端 **388 passed / 2 skipped**：涵盖主循环、Provider、存储、工具安全、配置、CLI、Web API、
   审批、代码执行、上下文压缩/摘要、真实 HTTP 假端点；
-- 前端 **40 文件 / 216 passed + 6 skipped**：流式渲染、工具卡、审批卡、滚动/StrictMode 稳定性、
+- 前端 **40 文件 / 219 passed + 6 skipped**：流式渲染、工具卡、审批卡、滚动/StrictMode 稳定性、
   模型管理、Token 统计、错误边界；
 - `tsc --noEmit` 全绿；真实模型 + 假端点双路径验证。
 
@@ -369,8 +369,8 @@ sequenceDiagram
 
 | 指标 | 数值 / 说明 |
 |---|---|
-| 后端测试 | 364 passed / 2 skipped |
-| 前端测试 | 40 files / 216 passed + 6 skipped |
+| 后端测试 | 388 passed / 2 skipped |
+| 前端测试 | 40 files / 219 passed + 6 skipped |
 | 设计决策 | 72 条（README「设计决策」章节） |
 | 支持模型 | 任意 OpenAI 兼容端点；内置 DeepSeek/Qwen/Ollama 示例 |
 | 上下文窗口 | DeepSeek-V4 / Qwen3.8-Flash：1M；自定义未知模型：128K 保守估计 |

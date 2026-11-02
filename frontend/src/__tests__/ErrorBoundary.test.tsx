@@ -32,7 +32,7 @@ describe('页面级错误边界', () => {
       .flat()
       .map((part: unknown) => String(part ?? ''))
       .join('\n')
-    expect(logged).toContain('[MyAi] 页面渲染异常')
+    expect(logged).toContain('[Nexus] 页面渲染异常')
     expect(logged).toContain('组件栈')
   })
 })

@@ -172,9 +172,39 @@ export function Composer() {
   const globalKbCount = kbDocs.filter((doc) => !doc.session_id && doc.status === 'ready').length
   const showGlobalKbHint = ownKbCount === 0 && globalKbCount > 0
 
+  // 本会话专属文档直接摆在输入框上方：会话级知识库的唯一可靠提示就是「在这一段对话里我看得见什么」，
+  // 只靠左下角面板会分不清文件属于哪段对话（面板是全局视角）。
+  const ownKbDocs = sessionId
+    ? kbDocs.filter((doc) => doc.session_id === sessionId)
+    : []
+
   return (
     <div>
       <div className="mx-auto w-full max-w-3xl px-4 py-3">
+        {ownKbDocs.length > 0 && (
+          <div
+            data-testid="kb-own-chips"
+            className="mb-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-sky-100 bg-white px-2.5 py-1.5"
+          >
+            <span className="shrink-0 text-[11px] text-slate-500">📎 本会话文档</span>
+            {ownKbDocs.map((doc) => (
+              <span
+                key={doc.id}
+                title={`${doc.name} · ${doc.status === 'ready' ? `${doc.chunk_count} 片段` : doc.status}`}
+                data-testid={`kb-own-chip-${doc.id}`}
+                className={`max-w-[200px] truncate rounded-full border px-2 py-0.5 text-[11px] ${
+                  doc.status === 'failed'
+                    ? 'border-rose-100 bg-rose-50 text-rose-600'
+                    : doc.status === 'parsing'
+                      ? 'border-slate-200 bg-slate-50 text-slate-500'
+                      : 'border-sky-100 bg-sky-50 text-sky-700'
+                }`}
+              >
+                {doc.name}
+              </span>
+            ))}
+          </div>
+        )}
         {showGlobalKbHint && (
           <div
             data-testid="kb-global-hint"

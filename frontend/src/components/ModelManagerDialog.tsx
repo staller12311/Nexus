@@ -3,10 +3,26 @@ import { Download, Plus, Server, Trash2, X } from 'lucide-react'
 import { api } from '../api/client'
 import { isTextModel } from '../lib/modelFilter'
 import { useChatStore } from '../store/chatStore'
+import type { CustomModelPayload } from '../types'
 import { ModelPicker } from './ModelPicker'
 
-type FormState = { name: string; base_url: string; model: string; api_key: string }
-const EMPTY_FORM: FormState = { name: '', base_url: '', model: '', api_key: '' }
+type FormState = {
+  name: string
+  base_url: string
+  model: string
+  api_key: string
+  /** 字符串形式便于输入框留空；提交时转 number，空串 → null */
+  max_tokens: string
+  context_window: string
+}
+const EMPTY_FORM: FormState = {
+  name: '',
+  base_url: '',
+  model: '',
+  api_key: '',
+  max_tokens: '',
+  context_window: '',
+}
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/
 
@@ -88,12 +104,20 @@ export function ModelManagerDialog({ open, onClose }: { open: boolean; onClose: 
       return
     }
     setSaving(true)
-    const ok = await addCustomModel({
+    const payload: CustomModelPayload = {
       name: form.name.trim(),
       base_url: form.base_url.trim(),
       model: form.model.trim(),
       api_key: form.api_key.trim(), // 粘贴带的空格在这里去掉
-    })
+    }
+    // 留空就不发这个字段，交给后端按默认值 / 模型名推断，
+    // 避免前端硬塞一个可能不对的数字（也避免老后端收到 null 报错）
+    const maxTokens = form.max_tokens.trim()
+    if (maxTokens) payload.max_tokens = Number(maxTokens)
+    const contextWindow = form.context_window.trim()
+    if (contextWindow) payload.context_window = Number(contextWindow)
+
+    const ok = await addCustomModel(payload)
     setSaving(false)
     if (ok) {
       setForm(EMPTY_FORM)
@@ -286,6 +310,42 @@ export function ModelManagerDialog({ open, onClose }: { open: boolean; onClose: 
             autoComplete="off"
             className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-sky-400"
           />
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-slate-500">
+                max_tokens（思考与正文共用）
+              </span>
+              <input
+                name="max_tokens"
+                value={form.max_tokens}
+                onChange={onChange('max_tokens')}
+                disabled={streaming}
+                type="number"
+                min={1}
+                placeholder="8192"
+                aria-label="max_tokens"
+                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-sky-400"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-slate-500">上下文窗口</span>
+              <input
+                name="context_window"
+                value={form.context_window}
+                onChange={onChange('context_window')}
+                disabled={streaming}
+                type="number"
+                min={1024}
+                placeholder="按模型名推断"
+                aria-label="上下文窗口"
+                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-sky-400"
+              />
+            </label>
+          </div>
+          <p className="text-[11px] leading-4 text-slate-400">
+            推理模型的思考也走 max_tokens：填小了会出现「思考完就没正文」。
+            常见 1M 窗口模型（deepseek-flash / deepseek-v4-pro 等）留空即可自动识别。
+          </p>
         </div>
 
         {formError && <div className="mt-2 text-[11px] text-rose-600">{formError}</div>}

@@ -7,8 +7,8 @@ set -eu
 
 if [ ! -f /app/config.yaml ]; then
     cp /app/config.example.yaml /app/config.yaml
-    echo "[MyAi] 未找到 config.yaml，已从 config.example.yaml 生成。"
-    echo "[MyAi] 如需自定义模型/审批策略，请在宿主机准备 config.yaml 并挂载到 /app/config.yaml。"
+    echo "[Nexus] 未找到 config.yaml，已从 config.example.yaml 生成。"
+    echo "[Nexus] 如需自定义模型/审批策略，请在宿主机准备 config.yaml 并挂载到 /app/config.yaml。"
 fi
 
 mkdir -p /app/data /app/workspace

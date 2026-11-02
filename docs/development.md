@@ -26,12 +26,12 @@
 > 必须用 `python -m pytest`（而不是裸 `pytest`）：测试通过包名 `agent.*` 导入，
 > 需要仓库根目录在 `sys.path` 上，`python -m` 会把当前目录加进去。
 
-当前全量：**364 passed / 2 skipped**（2 条 skip 是本机无法创建**文件**符号链接；
+当前全量：**388 passed / 2 skipped**（2 条 skip 是本机无法创建**文件**符号链接；
 目录场景已能用 junction 回退，见第 18 条）。
 后端用例：`tests/test_backend_service.py` 覆盖工作区 / 知识库 / 自定义模型 / 用量统计 / 审批接口；
 本轮新增上下文管理 4 条（工具参数压缩、80% 摘要替换、摘要失败回退、1M 窗口识别），
 以及此前的非法 JSON 本地拦截 / 审批修正，总数从 321 增至 328。
-前端：40 个测试文件 / 216 passed + 6 skipped（含审批卡片、审批+流式稳定性、错误边界、模型菜单、状态栏、图片压缩、Vision UI 与会话专属知识库用例）。
+前端：40 个测试文件 / 219 passed + 6 skipped（含审批卡片、审批+流式稳定性、错误边界、模型菜单、状态栏、图片压缩、Vision UI 与会话专属知识库用例）。
 
 ### 检索质量评测（golden set）
 
@@ -89,8 +89,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-desktop.ps1 -SkipInstal
 
 两个安装包：
 
-- `Nexus 智枢_1.2.0_x64-personal-setup.exe`：包含本机 `.env`、`config.yaml` 和完整 `.venv`，`run_python_code` 使用 venv；只供自己用。
-- `Nexus 智枢_1.2.0_x64-distribution-setup.exe`：使用 `config.example.yaml` + 空 `.env` 模板 + 便携 Python，不含 venv，适合分发。
+- `Nexus 智枢_1.2.1_x64-personal-setup.exe`：包含本机 `.env`、`config.yaml` 和完整 `.venv`，`run_python_code` 使用 venv；只供自己用。
+- `Nexus 智枢_1.2.1_x64-distribution-setup.exe`：使用 `config.example.yaml` + 空 `.env` 模板 + 便携 Python，不含 venv，适合分发。
 
 产物：
 

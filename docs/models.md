@@ -23,7 +23,7 @@ models:
 ```
 
 - `base_url` / `model` / `api_key_env` 是必填；`temperature` / `max_tokens` / `context_window` 可省，默认 0.7 / 4096 / 32768。
-  自定义模型未显式配置时按 **128K** 保守估计；已知 1M 模型（DeepSeek-V4 系列 / qwen3.8-flash 等）自动按 1M 计算。
+  自定义模型未显式配置时按 **128K** 保守估计；已知 1M 模型（DeepSeek-V4 系列 / deepseek-flash / qwen3.8-flash 等）自动按 1M 计算。
 - `api_key_env` 只是变量名。**密钥永远不写进 YAML**（第 5 条设计决策）。
 - 同一份配置里可以并列多个 provider，用 `--model` 或 `/model` 切换。
 
@@ -83,7 +83,7 @@ log_file              D:\MyAi\_acc\data\agent.log (INFO)
 
 ```console
 $ python -m agent --config config.yaml --model deepseek config check
-当前模型              deepseek (model=deepseek-chat)
+当前模型              deepseek (model=deepseek-flash)
 base_url              https://api.deepseek.com/v1
 api_key_env           DEEPSEEK_API_KEY: 已设置
 配置检查通过

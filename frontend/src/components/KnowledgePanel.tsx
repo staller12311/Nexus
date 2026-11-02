@@ -15,6 +15,26 @@ function statusText(doc: KnowledgeDoc): string {
   return `就绪 · ${doc.chunk_count} 片段`
 }
 
+/**
+ * 归属标签。
+ *
+ * 这里曾经只判断「有没有 session_id」，于是**不同会话各自上传的文档都显示「本会话」**，
+ * 用户根本分不清哪个文件属于哪段对话。现在按「相对当前会话」三态区分，
+ * 其他会话的文档带上 id 前缀，至少能看出「这不是当前这段对话的」。
+ */
+function ownership(doc: KnowledgeDoc, sessionId: string | null) {
+  if (!doc.session_id) {
+    return { text: '全局', className: 'bg-gray-100 text-gray-500' }
+  }
+  if (sessionId && doc.session_id === sessionId) {
+    return { text: '本会话', className: 'bg-sky-50 text-sky-600' }
+  }
+  return {
+    text: `其他会话 ${doc.session_id.slice(0, 6)}`,
+    className: 'bg-amber-50 text-amber-700',
+  }
+}
+
 /** 侧边栏「知识库」面板：拖拽上传 + 文档列表 + 解析状态。 */
 export function KnowledgePanel() {
   const docs = useChatStore((state) => state.kbDocs)
@@ -37,6 +57,12 @@ export function KnowledgePanel() {
   }, [loadKb, sessionId])
 
   const accept = status?.supported?.join(',') ?? '.pdf,.docx,.txt,.md'
+
+  // 三段分组。用户反馈的核心问题是「分不清哪个文件属于哪段对话」，
+  // 所以面板必须能回答「这个文件是谁的」，而不只是「它有没有绑会话」。
+  const ownDocs = sessionId ? docs.filter((doc) => doc.session_id === sessionId) : []
+  const otherDocs = docs.filter((doc) => doc.session_id && doc.session_id !== sessionId)
+  const globalDocs = docs.filter((doc) => !doc.session_id)
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return
@@ -112,67 +138,81 @@ export function KnowledgePanel() {
           {error && <div className="mt-1 text-[11px] text-rose-600">{error}</div>}
 
           {docs.length > 0 && (
-            <ul className="mt-2 space-y-1">
-              {docs.map((doc) => (
-                <li
-                  key={doc.id}
-                  className="group flex items-start gap-1.5 rounded-md px-1 py-1 hover:bg-gray-50"
-                  data-testid={`kb-doc-${doc.id}`}
-                >
-                  {doc.status === 'parsing' ? (
-                    <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-gray-500" />
-                  ) : (
-                    <FileText
-                      className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
-                        doc.status === 'failed' ? 'text-rose-500' : 'text-gray-400'
-                      }`}
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12px] text-gray-800" title={doc.name}>
-                      {doc.name}
+            <div className="mt-2 space-y-2">
+              {[
+                { key: 'own', title: '本会话', items: ownDocs },
+                { key: 'others', title: '其他会话', items: otherDocs },
+                { key: 'global', title: '全局（所有会话可见）', items: globalDocs },
+              ]
+                .filter((group) => group.items.length > 0)
+                .map((group) => (
+                  <div key={group.key} data-testid={`kb-group-${group.key}`}>
+                    <div className="mb-1 text-[10px] font-medium text-gray-400">
+                      {group.title}（{group.items.length}）
                     </div>
-                    <div
-                      className={`text-[10px] ${
-                        doc.status === 'failed' ? 'text-rose-500' : 'text-gray-400'
-                      }`}
-                    >
-                      <span
-                        className={`mr-1 rounded px-1 text-[9px] ${
-                          doc.session_id
-                            ? 'bg-sky-50 text-sky-600'
-                            : 'bg-gray-100 text-gray-500'
-                        }`}
-                      >
-                        {doc.session_id ? '本会话' : '全局'}
-                      </span>
-                      {statusText(doc)} · {humanSize(doc.size)}
-                    </div>
+                    <ul className="space-y-1">
+                      {group.items.map((doc) => {
+                        const badge = ownership(doc, sessionId)
+                        return (
+                          <li
+                            key={doc.id}
+                            className="group flex items-start gap-1.5 rounded-md px-1 py-1 hover:bg-gray-50"
+                            data-testid={`kb-doc-${doc.id}`}
+                          >
+                            {doc.status === 'parsing' ? (
+                              <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-gray-500" />
+                            ) : (
+                              <FileText
+                                className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
+                                  doc.status === 'failed' ? 'text-rose-500' : 'text-gray-400'
+                                }`}
+                              />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[12px] text-gray-800" title={doc.name}>
+                                {doc.name}
+                              </div>
+                              <div
+                                className={`text-[10px] ${
+                                  doc.status === 'failed' ? 'text-rose-500' : 'text-gray-400'
+                                }`}
+                              >
+                                <span
+                                  className={`mr-1 rounded px-1 text-[9px] ${badge.className}`}
+                                >
+                                  {badge.text}
+                                </span>
+                                {statusText(doc)} · {humanSize(doc.size)}
+                              </div>
+                            </div>
+                            {confirmId === doc.id ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void deleteKbDoc(doc.id)
+                                  setConfirmId(null)
+                                }}
+                                className="shrink-0 rounded bg-rose-600 px-1 text-[10px] text-white"
+                              >
+                                确认
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmId(doc.id)}
+                                aria-label={`删除 ${doc.name}`}
+                                className="shrink-0 rounded p-0.5 text-gray-400 opacity-0 transition-opacity hover:bg-gray-100 hover:text-rose-600 group-hover:opacity-100"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ul>
                   </div>
-                  {confirmId === doc.id ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void deleteKbDoc(doc.id)
-                        setConfirmId(null)
-                      }}
-                      className="shrink-0 rounded bg-rose-600 px-1 text-[10px] text-white"
-                    >
-                      确认
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmId(doc.id)}
-                      aria-label={`删除 ${doc.name}`}
-                      className="shrink-0 rounded p-0.5 text-gray-400 opacity-0 transition-opacity hover:bg-gray-100 hover:text-rose-600 group-hover:opacity-100"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
+                ))}
+            </div>
           )}
 
           {status && (

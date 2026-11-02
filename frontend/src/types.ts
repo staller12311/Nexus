@@ -32,6 +32,10 @@ export type CustomModelPayload = {
   base_url: string
   model: string
   api_key: string
+  /** 输出预算（推理模型的思考与正文共用）；不填走后端默认 */
+  max_tokens?: number | null
+  /** 上下文窗口；不填按模型名推断 */
+  context_window?: number | null
 }
 
 export type CustomModel = {
@@ -42,6 +46,8 @@ export type CustomModel = {
   api_key_masked: string
   created_at: string
   updated_at: string
+  max_tokens?: number | null
+  context_window?: number | null
 }
 
 export type SessionInfo = {

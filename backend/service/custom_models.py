@@ -32,6 +32,15 @@ CREATE TABLE IF NOT EXISTS custom_models (
 );
 """
 
+#: 后加的列（旧库用 ALTER TABLE 补齐，不能重建表——重建会丢用户的密钥）
+_EXTRA_COLUMNS = (
+    # 推理模型的「思考」和「正文」共用这一个预算；不显式配置时以前固定 2048，
+    # 结果是长思考直接把配额烧完、正文为空。允许用户按模型实际能力调。
+    ("max_tokens", "INTEGER"),
+    # 上游声明的上下文窗口；留空则按已知模型名推断（见 agent_service.context_window_for）
+    ("context_window", "INTEGER"),
+)
+
 
 class CustomModelError(Exception):
     """自定义模型相关的业务错误（映射成 400）。"""
@@ -49,6 +58,10 @@ class CustomModel:
     api_key: str
     created_at: str
     updated_at: str
+    #: 输出预算（思考 + 正文共用）；None = 用 CUSTOM_DEFAULTS
+    max_tokens: int | None = None
+    #: 上游上下文窗口；None = 按模型名推断（已知 1M 模型自动识别）
+    context_window: int | None = None
 
     @property
     def masked_key(self) -> str:
@@ -110,15 +123,29 @@ class CustomModelStore:
             pass
         if not self._schema_ready:
             connection.execute(_SCHEMA)
+            self._migrate(connection)
             self._schema_ready = True
         return connection
+
+    @staticmethod
+    def _migrate(connection: sqlite3.Connection) -> None:
+        """把后加的列补进旧库（幂等；已有该列就跳过）。"""
+        existing = {
+            str(row["name"]) for row in connection.execute("PRAGMA table_info(custom_models)")
+        }
+        for column, declaration in _EXTRA_COLUMNS:
+            if column not in existing:
+                connection.execute(
+                    f"ALTER TABLE custom_models ADD COLUMN {column} {declaration}"
+                )
 
     # ---- 读 -------------------------------------------------------------
     def list(self) -> list[CustomModel]:
         connection = self._connect()
         try:
             rows = connection.execute(
-                "SELECT name, base_url, model, api_key, created_at, updated_at"
+                "SELECT name, base_url, model, api_key, created_at, updated_at,"
+                " max_tokens, context_window"
                 " FROM custom_models ORDER BY created_at ASC"
             ).fetchall()
         finally:
@@ -129,7 +156,8 @@ class CustomModelStore:
         connection = self._connect()
         try:
             row = connection.execute(
-                "SELECT name, base_url, model, api_key, created_at, updated_at"
+                "SELECT name, base_url, model, api_key, created_at, updated_at,"
+                " max_tokens, context_window"
                 " FROM custom_models WHERE name = ?",
                 (name,),
             ).fetchone()
@@ -138,7 +166,16 @@ class CustomModelStore:
         return self._to_model(row) if row else None
 
     # ---- 写 -------------------------------------------------------------
-    def add(self, name: str, base_url: str, model: str, api_key: str) -> CustomModel:
+    def add(
+        self,
+        name: str,
+        base_url: str,
+        model: str,
+        api_key: str,
+        *,
+        max_tokens: int | None = None,
+        context_window: int | None = None,
+    ) -> CustomModel:
         clean_name, clean_url, clean_model, clean_key = validate_fields(
             name, base_url, model, api_key
         )
@@ -149,8 +186,18 @@ class CustomModelStore:
             try:
                 connection.execute(
                     "INSERT INTO custom_models (name, base_url, model, api_key, created_at,"
-                    " updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    (clean_name, clean_url, clean_model, clean_key, now, now),
+                    " updated_at, max_tokens, context_window)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        clean_name,
+                        clean_url,
+                        clean_model,
+                        clean_key,
+                        now,
+                        now,
+                        max_tokens,
+                        context_window,
+                    ),
                 )
                 connection.execute("COMMIT")
             except sqlite3.IntegrityError as exc:
@@ -168,6 +215,8 @@ class CustomModelStore:
             api_key=clean_key,
             created_at=now,
             updated_at=now,
+            max_tokens=max_tokens,
+            context_window=context_window,
         )
 
     def delete(self, name: str) -> bool:
@@ -193,6 +242,7 @@ class CustomModelStore:
 
     @staticmethod
     def _to_model(row: sqlite3.Row) -> CustomModel:
+        keys = row.keys()
         return CustomModel(
             name=str(row["name"]),
             base_url=str(row["base_url"]),
@@ -200,4 +250,8 @@ class CustomModelStore:
             api_key=str(row["api_key"]),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
+            max_tokens=int(row["max_tokens"]) if row["max_tokens"] is not None else None,
+            context_window=(
+                int(row["context_window"]) if "context_window" in keys and row["context_window"] is not None else None
+            ),
         )

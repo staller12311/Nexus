@@ -268,6 +268,33 @@ class LoggingConfig(_StrictModel):
         return level
 
 
+class ServerConfig(_StrictModel):
+    """HTTP 服务的访问控制（只影响 ``backend``，CLI 不读这一段）。
+
+    默认「什么都不配」也是安全的：没有令牌时只接受回环地址访问，
+    这样 `docker compose up` 之后不会因为忘了配鉴权就把接口暴露到局域网。
+    """
+
+    #: 访问令牌。设置后所有 /api 请求必须带 ``Authorization: Bearer <token>``。
+    #: 不设置（默认）则退化为「只允许回环地址访问」。
+    auth_token: str = ""
+
+    @field_validator("auth_token")
+    @classmethod
+    def _strip_token(cls, value: str) -> str:
+        # 从 .env / shell 里带出来的换行和引号是最常见的「令牌明明对了却 401」来源
+        return (value or "").strip().strip('"').strip("'")
+
+    @model_validator(mode="after")
+    def _warn_if_weak(self) -> "ServerConfig":
+        if self.auth_token and len(self.auth_token) < 16:
+            raise ValueError(
+                "server.auth_token 太短（<16 字符）：这个令牌等于把服务开放给整个网络，"
+                "请用 `python -c \"import secrets;print(secrets.token_urlsafe(32))\"` 生成"
+            )
+        return self
+
+
 class AppConfig(_StrictModel):
     default_model: str
     models: dict[str, ModelConfig]
@@ -275,6 +302,7 @@ class AppConfig(_StrictModel):
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    server: ServerConfig = Field(default_factory=ServerConfig)
 
     _source_path: Path | None = PrivateAttr(default=None)
 

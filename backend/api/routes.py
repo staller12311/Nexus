@@ -152,6 +152,8 @@ def _custom_model_out(model: CustomModel) -> CustomModelOut:
         api_key_masked=model.masked_key,
         created_at=model.created_at,
         updated_at=model.updated_at,
+        max_tokens=model.max_tokens,
+        context_window=model.context_window,
     )
 
 
@@ -171,7 +173,12 @@ def create_custom_model(request: Request, payload: CustomModelIn) -> CustomModel
     service = get_service(request)
     try:
         created = service.add_custom_model(
-            payload.name, payload.base_url, payload.model, payload.api_key
+            payload.name,
+            payload.base_url,
+            payload.model,
+            payload.api_key,
+            max_tokens=payload.max_tokens,
+            context_window=payload.context_window,
         )
     except DuplicateCustomModel as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
