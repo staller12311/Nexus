@@ -6,12 +6,15 @@
 <h3>把大模型变成真正的生产力工具</h3>
 <p><b>支持 1M 上下文、本地知识库与可控代码执行的私有化 Agent 中台</b></p>
 <br>
-<a href="https://github.com/staller12311/Nexus/releases/latest">
-  <img src="https://img.shields.io/badge/Download-Windows_App-brightgreen?style=for-the-badge&logo=windows" alt="Download Windows App" />
-</a>
-<a href="#快速开始">
-  <img src="https://img.shields.io/badge/Deploy-Docker-blue?style=for-the-badge&logo=docker" alt="Docker Deploy" />
-</a>
+  <a href="https://gitee.com/stellarcc/nexus/releases">
+    <img src="https://img.shields.io/badge/Download-Windows_App-brightgreen?style=for-the-badge&logo=windows" alt="Download Windows App" />
+  </a>
+  <a href="#快速开始">
+    <img src="https://img.shields.io/badge/Deploy-Docker-blue?style=for-the-badge&logo=docker" alt="Docker Deploy" />
+  </a>
+  <a href="https://github.com/staller12311/Nexus/releases/latest">
+    <img src="https://img.shields.io/badge/GitHub-Release-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Release" />
+  </a>
 
 <br><br>
 
@@ -24,6 +27,8 @@
 </div>
 
 [核心特性](#核心特性) · [系统架构](#系统架构) · [界面预览](#界面预览) · [快速开始](#快速开始) · [配置](#配置)
+
+> 仓库：[码云](https://gitee.com/stellarcc/nexus)（主，下载更快） · [GitHub](https://github.com/staller12311/Nexus)（镜像，自动化测试在此运行）
 
 ## 为什么做这个？
 
@@ -268,8 +273,10 @@ python -m venv .venv
 桌面版用 Tauri v2 封装前端，并内置一个 PyInstaller onedir 后端；安装后不需要单独启动 Python 或浏览器。
 
 **直接下载（推荐）**：不想自己构建的话，从
-[最新 Release](https://github.com/staller12311/Nexus/releases/latest) 下载
-`Nexus 智枢_x.y.z_x64-distribution-setup.exe`（约 28 MB），双击安装即可。
+[码云发行版](https://gitee.com/stellarcc/nexus/releases) 下载
+`Nexus 智枢_1.2.2_x64-distribution-setup.exe`（28.2 MB），双击安装即可。
+GitHub 同步提供同一份安装包：[GitHub Release](https://github.com/staller12311/Nexus/releases/latest)
+（国内访问可能较慢，两者 sha256 一致）。
 安装包未做代码签名，SmartScreen 提示选「更多信息 → 仍要运行」。
 
 **两种安装包**
